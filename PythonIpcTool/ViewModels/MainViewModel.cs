@@ -5,6 +5,8 @@ using System.ComponentModel; // Required for DesignerProperties
 using System.Windows; // Required for DependencyObject
 using PythonIpcTool.Models;
 using PythonIpcTool.Services;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 namespace PythonIpcTool.ViewModels;
 
@@ -18,13 +20,16 @@ public partial class MainViewModel : ObservableObject
 
     // Properties for Python interpreter and script paths
     [ObservableProperty]
-    private string _pythonInterpreterPath = "";
+    [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))]
+    private string _pythonInterpreterPath = "C:\\Python310\\python.exe";
 
     [ObservableProperty]
-    private string _pythonScriptPath = "";
+    [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))]
+    private string _pythonScriptPath = "E:\\Project\\VisualStudio\\PythonIpcTool\\PythonIpcTool\\PythonScripts\\simple_processor.py";
 
     // Property for user input data
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))]
     private string _inputData = "{\"value\": \"Hello from C#\", \"numbers\": [1, 2, 3]}";
 
     // Property for displaying Python script's output
@@ -36,6 +41,7 @@ public partial class MainViewModel : ObservableObject
 
     // Property to indicate if a process is currently running (for UI busy state)
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))]
     private bool _isProcessing;
 
     // Property for selecting IPC mode
@@ -125,7 +131,54 @@ public partial class MainViewModel : ObservableObject
                !IsProcessing;
     }
 
-    // ... Other commands like BrowsePythonInterpreter, BrowsePythonScript, ClearInput ...
+    /// <summary>
+    /// Command to browse for the Python interpreter executable.
+    /// This method is wrapped into 'BrowsePythonInterpreterCommand' by the source generator.
+    /// </summary>
+    [RelayCommand]
+    private void BrowsePythonInterpreter()
+    {
+        var openFileDialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Filter = "Python Executable|python.exe;pythonw.exe|All Files (*.*)|*.*",
+            Title = "Select Python Interpreter"
+        };
+
+        if (openFileDialog.ShowDialog() == true)
+        {
+            PythonInterpreterPath = openFileDialog.FileName;
+        }
+    }
+
+    /// <summary>
+    /// Command to browse for the Python script file.
+    /// This method is wrapped into 'BrowsePythonScriptCommand' by the source generator.
+    /// </summary>
+    [RelayCommand]
+    private void BrowsePythonScript()
+    {
+        var openFileDialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Filter = "Python Scripts (*.py)|*.py|All Files (*.*)|*.*",
+            Title = "Select Python Script"
+        };
+
+        if (openFileDialog.ShowDialog() == true)
+        {
+            PythonScriptPath = openFileDialog.FileName;
+        }
+    }
+
+    /// <summary>
+    /// Command to clear the input data text.
+    /// This method is wrapped into 'ClearInputCommand' by the source generator.
+    /// </summary>
+    [RelayCommand]
+    private void ClearInput()
+    {
+        InputData = "";
+        Logs.Add("[INFO] Input data cleared.");
+    }
 
     [RelayCommand]
     private void StopPythonProcess()
