@@ -1,4 +1,174 @@
-﻿好的，我們來詳細說明 **階段 0：專案初始化與基礎架構** 中的兩個關鍵步驟：
+﻿好的，我已將之前討論的優化與改善方向整合進系統需求書，並重新整理為一份更完整、更具前瞻性的需求書。
+
+---
+
+## 系統需求書 - Python 互動式 IPC 工具 (WPF C#)
+
+### 1. 專案概述
+
+**1.1 專案名稱：** Python 互動式 IPC 工具 (WPF C#)
+
+**1.2 專案主題：** 開發一個可以與 Python 腳本互動的行程間通訊 (IPC) 工具
+
+**1.3 專案描述：**
+本專案旨在開發一個基於 WPF (C#) 的桌面應用程式，用於實現與外部 Python 腳本的雙向行程間通訊 (IPC)。在現代軟體開發中，許多複雜的數據分析、機器學習模型或特定任務功能常使用 Python 腳本實現。本工具將提供一個使用者友善且高效的介面，接收使用者輸入，然後透過標準輸入/輸出 (Standard I/O) 或本地 Socket 將資料傳遞給指定的 Python 腳本進行處理。Python 腳本完成運算後，其結果將被 WPF 應用程式接收並以清晰、現代、具結構化的方式呈現給使用者。本專案特別注重系統的模組化、可擴充性、安全性及使用者體驗。
+
+**1.4 學習重點：**
+*   **行程間通訊 (IPC)：** 深入學習如何使用 `System.Diagnostics.Process` 類別啟動外部程式，並有效地重定向其 `StandardInput`、`StandardOutput` 和 `StandardError`。同時，探索 `System.Net.Sockets` 實現更靈活的 Socket 通訊機制。
+*   **資料交換格式：** 掌握使用 JSON 作為 C# 和 Python 之間資料交換的首選格式，學習兩種語言的序列化與反序列化技術，確保資料傳輸的結構化與可靠性。
+*   **整合異質系統：** 理解並實踐如何將不同程式語言（C# 和 Python）的功能模組無縫整合到一個應用程式中，這是一種在現代軟體開發中常用且實用的跨語言通訊模式。
+*   **WPF 現代化開發：** 應用 MVVM 設計模式、異步編程 (`async`/`await`) 和現代 UI 元件庫 (如 MahApps.Metro, Material Design) 來構建響應式、高效能且美觀的 WPF 應用程式。
+
+### 2. 功能需求 (Functional Requirements)
+
+**2.1 使用者介面 (UI) 功能：**
+
+*   **Python 環境設定區：**
+    *   **Python 解釋器路徑：** 提供文字輸入框和瀏覽按鈕，供使用者指定 Python 解釋器 (例如 `python.exe` 或虛擬環境中的解釋器) 的完整路徑。
+    *   **Python 腳本路徑：** 提供文字輸入框和瀏覽按鈕，供使用者指定要執行之 Python 腳本檔案的完整路徑。
+    *   **虛擬環境支援：** 應用程式應能自動檢測並優先使用指定的 Python 虛擬環境中的解釋器。
+    *   **IPC 模式選擇：** 提供兩個單選按鈕 (RadioButton)，供使用者選擇使用 Standard I/O 或本地 Socket 進行 IPC 通訊。
+    *   **配置保存：** 上述設定應能自動保存並在應用程式下次啟動時自動載入。
+*   **輸入資料區域 (Input Data Area)：**
+    *   提供一個多行文字輸入框 (TextBox)，供使用者輸入欲傳遞給 Python 腳本的 JSON 格式資料。
+*   **操作控制區 (Action Control Area)：**
+    *   **執行按鈕：** 提供一個明確的按鈕（例如 "執行 Python 腳本"），觸發資料序列化、傳輸和 Python 腳本執行。
+    *   **取消按鈕：** 對於長時間運行的腳本，提供一個 "取消" 按鈕，允許使用者中止當前 Python 腳本的執行。
+    *   **清除輸入：** 提供一個 "清除輸入" 按鈕，清空輸入區域內容。
+*   **結果顯示區域 (Output Data Area)：**
+    *   提供一個多行文字顯示區 (TextBox/TextBlock)，用於顯示 Python 腳本返回的 JSON 格式結果。
+    *   顯示區應具備基本的語法高亮或格式化功能，以提升 JSON 資料的可讀性。
+*   **狀態與日誌顯示區域 (Status & Log Area)：**
+    *   提供一個滾動式文字顯示區，顯示應用程式的運行狀態（例如 "正在執行...", "執行完成", "等待輸入..."）。
+    *   顯示來自 Python 腳本的 `StandardError` 輸出。
+    *   顯示應用程式內部日誌訊息（例如配置載入、IPC 通訊細節、警告、錯誤）。
+    *   應區分不同日誌級別的訊息（例如 INFO, WARN, ERROR）。
+
+**2.2 核心邏輯功能：**
+
+*   **Python 進程管理：**
+    *   能夠透過 `System.Diagnostics.Process` 啟動指定的 Python 解釋器，將目標 Python 腳本作為第一個參數傳遞。
+    *   正確配置 `ProcessStartInfo`，重定向 `StandardInput`、`StandardOutput` 和 `StandardError` 以實現 Standard I/O 通訊。
+    *   能夠透過 Socket 建立雙向通訊管道，啟動 Python 進程並告知其 Socket 連接資訊。
+    *   提供機制在使用者取消或應用程式關閉時，可靠地終止 Python 進程。
+*   **資料序列化與反序列化：**
+    *   將使用者輸入的 JSON 字串直接傳遞給 Python 腳本。
+    *   Python 腳本返回的結果應為 JSON 格式字串。C# 應用程式負責接收並顯示。
+*   **資料傳輸 (C# -> Python)：**
+    *   **Standard I/O 模式：** 將 JSON 資料寫入重定向的 `StandardInput` 流。
+    *   **本地 Socket 模式：** 建立本地 TCP Socket 連接，將 JSON 資料透過 Socket 發送給 Python 腳本。
+*   **資料接收 (Python -> C#)：**
+    *   **Standard I/O 模式：** 異步監聽 Python 腳本的 `StandardOutput` 流，逐行或逐段讀取結果。
+    *   **本地 Socket 模式：** 異步監聽 Socket 連接，接收 Python 腳本發送的 JSON 資料。
+*   **錯誤處理與異常捕獲：**
+    *   捕獲 Python 腳本執行過程中的錯誤（例如腳本語法錯誤、運行時異常），並將 `StandardError` 的內容解析為結構化錯誤訊息，顯示給使用者。
+    *   處理 IPC 通訊過程中的異常（例如 Python 進程未啟動、Socket 連接失敗、資料解析錯誤）。
+    *   提供友善的錯誤提示，並將詳細錯誤記錄到日誌系統。
+*   **IPC 模式切換：** 根據使用者選擇，動態啟用 Standard I/O 或 Socket 模式的通訊邏輯。
+*   **配置管理：** 使用獨立的配置服務 (`IConfigurationService`) 負責應用程式設定 (Python 路徑、腳本路徑、IPC 模式等) 的保存和載入。建議使用 `appsettings.json` 或 `User.config` 進行儲存。
+
+**2.3 Python 腳本功能 (範例)：**
+
+*   **接收輸入：** Python 腳本能夠從 `sys.stdin` 或本地 Socket 接收 C# 應用程式傳來的 JSON 資料。
+*   **處理資料：** 對接收到的 JSON 資料執行邏輯處理（例如，解析 JSON 物件、執行計算、調用機器學習模型等）。
+*   **返回結果：** 將處理結果序列化為 JSON 格式字串，並透過 `sys.stdout` 或本地 Socket 返回給 C# 應用程式。
+*   **錯誤輸出：** 腳本在遇到異常時，應將錯誤訊息輸出到 `sys.stderr`。
+
+### 3. 非功能性需求 (Non-Functional Requirements)
+
+**3.1 效能 (Performance)：**
+*   IPC 通訊應在合理的時間內完成，即使傳輸較大的資料量（例如 MB 級別的 JSON）。
+*   UI 應保持高度響應性，避免在等待 Python 腳本執行時出現凍結。所有 IPC 操作應使用異步 (`async`/`await`) 編程，確保 UI 線程的流暢。
+*   針對長時運行的 Python 腳本，UI 應提供進度指示，且不應影響應用程式的其他互動。
+
+**3.2 可用性 (Usability)：**
+*   直觀且易於理解的使用者介面，使用者能夠輕鬆進行設定、輸入資料、執行腳本並查看結果。
+*   清晰的結果顯示，特別是 JSON 資料的格式化和語法高亮。
+*   友善的狀態提示、載入動畫、空資料顯示和錯誤訊息，引導使用者操作和診斷問題。
+*   支援鍵盤導航和基本觸控操作。
+
+**3.3 可維護性 (Maintainability)：**
+*   程式碼應嚴格遵循 MVVM 設計模式，實現邏輯與 UI 的高度分離。
+*   C# 和 Python 腳本的程式碼應結構清晰、模組化，並有全面且準確的英文註解。
+*   各模組（IPC 服務、資料序列化服務、配置服務）應遵循單一職責原則。
+*   易於替換、更新或擴展 Python 腳本，無需修改 C# 應用程式的核心邏輯。
+
+**3.4 擴充性 (Extensibility)：**
+*   **IPC 抽象化：** 核心 IPC 邏輯應抽象為介面 (`IProcessCommunicator`)，支持未來引入更多 IPC 方式（如 Named Pipes），而無需重構應用程式的核心業務邏輯。
+*   **多腳本支援：** 考慮未來可擴展為支持多個預定義 Python 腳本的選擇，每個腳本可有獨立的配置。
+*   **資料模型靈活性：** 選擇 JSON 作為資料格式，確保未來能夠輕鬆擴充傳輸更複雜的資料結構。
+*   **日誌擴展：** 具備可插拔的日誌輸出方式（例如檔案、資料庫、遠端服務）。
+
+**3.5 錯誤處理與健壯性 (Error Handling & Robustness)：**
+*   程式應能妥善處理各種異常情況，如 Python 解釋器路徑錯誤、腳本不存在、IPC 通訊失敗、無效 JSON 輸入/輸出、Python 進程非正常終止等。
+*   提供有意義、易於理解的錯誤訊息，幫助使用者診斷問題。
+*   應用程式應能從錯誤中恢復或提供清晰的退出機制，避免崩潰。
+
+**3.6 UI 設計 (UI Design)：**
+*   採用現代 UI 設計風格，如 Fluent Design System 或 Material Design in XAML，結合 MahApps.Metro 或 Material Design in XAML 元件庫，提升使用者體驗。
+*   確保介面佈局清晰、間距合理、配色協調，遵循視覺層次原則。
+*   支援基本響應式佈局，適應不同視窗大小，並考慮高 DPI 顯示。
+*   提供 Dark Mode / Light Mode 自動切換機制。
+
+**3.7 安全性 (Security)：**
+*   **Python 環境隔離：** 優先使用 Python 虛擬環境，避免系統環境污染。
+*   **腳本執行限制 (高階)：** 考慮未來增加腳本執行沙盒或白名單機制，限制 Python 腳本可訪問的系統資源，以防範惡意腳本執行。
+
+### 4. 技術棧 (Technology Stack)
+
+**4.1 前端 (WPF C#)：**
+*   **語言：** C#
+*   **框架：** .NET (WPF), .NET 8 或最新 LTS 版本
+*   **設計模式：** MVVM (建議使用 `CommunityToolkit.Mvvm` 或 `Prism`)
+*   **UI 元件庫 (建議)：** MahApps.Metro 或 Material Design in XAML
+*   **IPC 抽象化：** 自定義介面 `IProcessCommunicator` 及其實現 (`StandardIOProcessCommunicator`, `SocketProcessCommunicator`)
+*   **IPC (Standard I/O)：** `System.Diagnostics.Process`
+*   **IPC (Socket)：** `System.Net.Sockets`
+*   **資料序列化：** `System.Text.Json`
+*   **日誌：** NLog 或 Serilog
+
+**4.2 後端 (Python)：**
+*   **語言：** Python 3.x (建議使用最新版本)
+*   **IPC (Standard I/O)：** `sys.stdin`, `sys.stdout`, `sys.stderr`
+*   **IPC (Socket)：** `socket` 模組
+*   **資料序列化/反序列化：** `json` 模組
+*   **環境管理：** `venv` 或 `conda` (建議在腳本層面考慮)
+
+### 5. 開發環境 (Development Environment)
+
+*   **IDE：** Visual Studio (C#), Visual Studio Code / PyCharm (Python)
+*   **作業系統：** Windows 10/11
+*   **.NET SDK：** 最新版本
+*   **Python 環境：** Python 3.x (建議使用虛擬環境)
+
+### 6. 測試計畫 (Test Plan)
+
+*   **單元測試：**
+    *   對 ViewModel、服務層 (IPC 服務、配置服務、序列化服務) 的核心邏輯進行單元測試。
+    *   測試資料序列化和反序列化功能。
+*   **整合測試：**
+    *   測試 C# 應用程式與 Python 腳本之間在 Standard I/O 模式下的 IPC 通訊是否正常工作，包括不同資料量和錯誤情況。
+    *   測試 C# 應用程式與 Python 腳本之間在本地 Socket 模式下的 IPC 通訊是否正常工作，包括不同資料量和錯誤情況。
+    *   測試配置的保存和載入。
+    *   測試進程啟動、取消和終止。
+*   **UI 測試：**
+    *   確保 UI 元素正確顯示，佈局響應式。
+    *   驗證使用者互動流暢，狀態提示、載入動畫和錯誤訊息顯示正確。
+    *   測試 Dark Mode / Light Mode 切換。
+*   **錯誤處理測試：**
+    *   模擬各種錯誤情況：Python 解釋器路徑錯誤、腳本不存在、腳本執行時拋出異常、IPC 通訊異常、無效 JSON 輸入/輸出。
+    *   驗證錯誤訊息的準確性和日誌記錄的完整性。
+*   **效能測試：**
+    *   測試傳輸不同大小 (KB, MB) 的 JSON 資料時的 IPC 響應時間和 UI 流暢度。
+    *   測試長時間運行腳本時的資源佔用和穩定性。
+*   **安全測試 (高階)：** 評估執行外部腳本的潛在安全漏洞。
+
+---
+
+這份系統需求書現在更加全面和詳細，特別強調了模組化、可擴充性和使用者體驗，為專案的開發提供了一個清晰且強大的藍圖。
+
+現在，您希望從哪個部分開始深入討論和設計呢？例如，我們可以從 MVVM 基礎架構、IPC 抽象層的程式碼設計，或 UI 的 XAML 佈局和風格設定開始。
+
 
 1.  **定義基礎資料模型**
 2.  **配置 App.xaml**

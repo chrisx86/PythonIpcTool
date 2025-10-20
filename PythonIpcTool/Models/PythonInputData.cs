@@ -1,5 +1,7 @@
 ﻿using System.Text.Json.Serialization; // For JSON serialization attributes
 
+namespace PythonIpcTool.Models;
+
 /// <summary>
 /// Represents the input data structure sent from C# to the Python script.
 /// This model will be serialized into a JSON string.

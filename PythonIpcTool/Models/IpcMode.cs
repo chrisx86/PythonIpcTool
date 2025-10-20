@@ -1,4 +1,6 @@
-﻿/// <summary>
+﻿namespace PythonIpcTool.Models;
+
+/// <summary>
 /// Defines the inter-process communication (IPC) modes available.
 /// </summary>
 public enum IpcMode
