@@ -1,0 +1,50 @@
+﻿<!-- App.xaml -->
+<Application x:Class="PythonIpcTool.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:PythonIpcTool"
+             StartupUri="Views/MainWindow.xaml">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- MahApps.Metro resource dictionaries. Make sure to download these via NuGet. -->
+                <!-- 
+                    These dictionaries define the base theme (light/dark) and accent color.
+                    You can choose different themes and accents as needed.
+                    For example, "Light.Red" or "Dark.Blue".
+                -->
+                <ResourceDictionary Source="pack://application:,,,/MahApps.Metro;component/Styles/Controls.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/MahApps.Metro;component/Styles/Fonts.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/MahApps.Metro;component/Styles/Themes/Light.Blue.xaml" />
+                <!-- If you want to use Material Design:
+                <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.Light.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.Defaults.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/MaterialDesignColors;component/Themes/Recommended/Primary/MaterialDesignColor.DeepPurple.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/MaterialDesignColors;component/Themes/Recommended/Accent/MaterialDesignColor.Lime.xaml" />
+                -->
+
+                <!-- Define application-specific styles or resources here -->
+                <!-- Example: A global style for TextBoxes -->
+                <Style TargetType="TextBox">
+                    <Setter Property="Padding" Value="5"/>
+                    <Setter Property="BorderBrush" Value="{DynamicResource MahApps.Brushes.Accent}"/>
+                    <Setter Property="BorderThickness" Value="1"/>
+                    <Setter Property="VerticalContentAlignment" Value="Center"/>
+                    <Setter Property="FontSize" Value="14"/>
+                </Style>
+
+                <!-- Example: A global style for Buttons -->
+                <Style TargetType="Button">
+                    <Setter Property="Padding" Value="10 5"/>
+                    <Setter Property="FontSize" Value="14"/>
+                    <Setter Property="Background" Value="{DynamicResource MahApps.Brushes.Accent}"/>
+                    <Setter Property="Foreground" Value="{DynamicResource MahApps.Brushes.ThemeBackground}"/>
+                    <Setter Property="BorderBrush" Value="{DynamicResource MahApps.Brushes.Accent}"/>
+                    <Setter Property="BorderThickness" Value="1"/>
+                    <Setter Property="Margin" Value="5"/>
+                </Style>
+
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
