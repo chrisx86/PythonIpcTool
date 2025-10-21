@@ -20,7 +20,7 @@ namespace PythonIpcTool.Views
             IPythonProcessCommunicator ipcCommunicator = new StandardIOProcessCommunicator();
 
             // Instantiate MainViewModel and set it as the DataContext for this window.
-            this.DataContext = new MainViewModel(ipcCommunicator);
+            this.DataContext = new MainViewModel();
 
             // Register the Closing event to ensure proper resource cleanup.
             this.Closing += MainWindow_Closing;
@@ -33,12 +33,8 @@ namespace PythonIpcTool.Views
         {
             if (this.DataContext is MainViewModel viewModel)
             {
-                // Ensure the IPC communicator's process is stopped when the window closes
-                // This command now exists in the ViewModel.
-                if (viewModel.StopPythonProcessCommand.CanExecute(null))
-                {
-                    viewModel.StopPythonProcessCommand.Execute(null);
-                }
+                // MODIFICATION: Call the new StopPythonProcessCommand
+                viewModel.StopPythonProcessCommand.Execute(null);
             }
         }
     }

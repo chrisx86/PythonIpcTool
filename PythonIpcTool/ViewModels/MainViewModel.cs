@@ -1,12 +1,10 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System.Collections.ObjectModel;
-using System.ComponentModel; // Required for DesignerProperties
 using System.Windows; // Required for DependencyObject
 using PythonIpcTool.Models;
 using PythonIpcTool.Services;
-using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
+using System.IO;
 
 namespace PythonIpcTool.ViewModels;
 
@@ -16,7 +14,7 @@ namespace PythonIpcTool.ViewModels;
 public partial class MainViewModel : ObservableObject
 {
     // Field is now nullable to accommodate design-time instance where it will be null.
-    private readonly IPythonProcessCommunicator? _ipcCommunicator;
+    private IPythonProcessCommunicator? _activeCommunicator;
 
     // Properties for Python interpreter and script paths
     [ObservableProperty]
@@ -25,8 +23,7 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))]
-    private string _pythonScriptPath = "E:\\Project\\VisualStudio\\PythonIpcTool\\PythonIpcTool\\PythonScripts\\simple_processor.py";
-
+    private string _pythonScriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "PythonScripts", "simple_processor.py");
     // Property for user input data
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))]
@@ -53,12 +50,12 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     public MainViewModel(IPythonProcessCommunicator ipcCommunicator)
     {
-        _ipcCommunicator = ipcCommunicator ?? throw new ArgumentNullException(nameof(ipcCommunicator));
+        _activeCommunicator = ipcCommunicator ?? throw new ArgumentNullException(nameof(ipcCommunicator));
 
         // Subscribe to IPC communicator events
-        _ipcCommunicator.OutputReceived += OnOutputReceived;
-        _ipcCommunicator.ErrorReceived += OnErrorReceived;
-        _ipcCommunicator.ProcessExited += OnProcessExited;
+        _activeCommunicator.OutputReceived += OnOutputReceived;
+        _activeCommunicator.ErrorReceived += OnErrorReceived;
+        _activeCommunicator.ProcessExited += OnProcessExited;
 
         Logs.Add("[INFO] Application started. Ready for input.");
     }
@@ -70,25 +67,26 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     public MainViewModel()
     {
+        Logs.Add("[INFO] Application started. Ready for input.");
         // We can keep the design-time check as a safeguard.
-        if (!DesignerProperties.GetIsInDesignMode(new DependencyObject()))
-        {
-            // Allow inheritance for runtime scenarios if needed, but for now, we assume
-            // the parameterless constructor is only for the designer.
-            // In a real DI scenario, this constructor might not even exist or be protected.
-            // For now, let's keep the exception to prevent misuse.
-            throw new InvalidOperationException("This constructor is intended for design-time use only.");
-        }
+        //if (!DesignerProperties.GetIsInDesignMode(new DependencyObject()))
+        //{
+        //    // Allow inheritance for runtime scenarios if needed, but for now, we assume
+        //    // the parameterless constructor is only for the designer.
+        //    // In a real DI scenario, this constructor might not even exist or be protected.
+        //    // For now, let's keep the exception to prevent misuse.
+        //    throw new InvalidOperationException("This constructor is intended for design-time use only.");
+        //}
 
-        _ipcCommunicator = null;
+        //_ipcCommunicator = null;
 
-        PythonInterpreterPath = @"C:\Path\To\Your\python.exe (Design Time)";
-        PythonScriptPath = @"C:\Path\To\Your\script.py (Design Time)";
-        InputData = "{\"message\": \"Sample JSON data for designer\"}";
-        OutputResult = "This is a sample output result shown only in the designer.";
-        Logs.Add("[DESIGN] ViewModel loaded in design mode.");
-        Logs.Add("[DESIGN] This is a sample log entry.");
-        IsProcessing = true;
+        //PythonInterpreterPath = @"C:\Path\To\Your\python.exe (Design Time)";
+        //PythonScriptPath = @"C:\Path\To\Your\script.py (Design Time)";
+        //InputData = "{\"message\": \"Sample JSON data for designer\"}";
+        //OutputResult = "This is a sample output result shown only in the designer.";
+        //Logs.Add("[DESIGN] ViewModel loaded in design mode.");
+        //Logs.Add("[DESIGN] This is a sample log entry.");
+        //IsProcessing = true;
     }
 
     // --- Commands ---
@@ -96,32 +94,82 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanExecutePythonScript))]
     private async Task ExecutePythonScriptAsync()
     {
-        // Add a null check for robustness. This prevents crashes if used in an invalid state.
-        if (_ipcCommunicator == null)
-        {
-            OnErrorReceived("[ERROR] IPC Communicator is not initialized.");
-            return;
-        }
-
         IsProcessing = true;
         OutputResult = "";
         Logs.Clear();
         Logs.Add($"[INFO] Starting Python script in {SelectedIpcMode} mode...");
+        StopPythonProcess();
+        IPythonProcessCommunicator? localCommunicator = null;
 
+        // --- MODIFICATION START: Dynamic Communicator Creation ---
         try
         {
-            await _ipcCommunicator.StartProcessAsync(PythonInterpreterPath, PythonScriptPath, SelectedIpcMode);
-            Logs.Add($"[INFO] Python process started: {PythonInterpreterPath} {PythonScriptPath}");
-            await _ipcCommunicator.SendMessageAsync(InputData);
+            localCommunicator = SelectedIpcMode switch
+            {
+                IpcMode.StandardIO => new StandardIOProcessCommunicator(),
+                IpcMode.LocalSocket => new LocalSocketProcessCommunicator(),
+                _ => throw new NotImplementedException($"IPC mode '{SelectedIpcMode}' is not implemented.")
+            };
+
+            _activeCommunicator = localCommunicator;
+            // Subscribe to its events
+            _activeCommunicator.OutputReceived += OnOutputReceived;
+            _activeCommunicator.ErrorReceived += OnErrorReceived;
+            _activeCommunicator.ProcessExited += OnProcessExited;
+
+            // Now, start the process using the newly created communicator
+            await _activeCommunicator.StartProcessAsync(PythonInterpreterPath, PythonScriptPath, SelectedIpcMode);
+            Logs.Add($"[INFO] Python process started: {Path.GetFileName(PythonInterpreterPath)}");
+
+            await _activeCommunicator.SendMessageAsync(InputData);
             Logs.Add($"[INFO] Input sent: {InputData}");
         }
         catch (Exception ex)
         {
             OnErrorReceived($"[ERROR] Execution failed: {ex.Message}");
-            _ipcCommunicator.StopProcess();
+            CleanUpCommunicator(); // Ensure cleanup on failure
             IsProcessing = false;
         }
     }
+
+    // NEW: Add a command to stop the process, which is good for window closing event
+    [RelayCommand]
+    private void StopPythonProcess()
+    {
+        Logs.Add("[INFO] Stopping Python process...");
+        CleanUpCommunicator();
+    }
+
+    // NEW: Helper method for cleanup to avoid code duplication
+    private void CleanUpCommunicator()
+    {
+        if (_activeCommunicator != null)
+        {
+            // Unsubscribe from events to prevent memory leaks
+            _activeCommunicator.OutputReceived -= OnOutputReceived;
+            _activeCommunicator.ErrorReceived -= OnErrorReceived;
+            _activeCommunicator.ProcessExited -= OnProcessExited;
+
+            _activeCommunicator.StopProcess();
+            _activeCommunicator = null;
+        }
+    }
+
+
+    private void OnProcessExited(int exitCode)
+    {
+        App.Current.Dispatcher.Invoke(() =>
+        {
+            Logs.Add($"[INFO] Python process exited with code: {exitCode}");
+            IsProcessing = false;
+            // No need to call StopProcess here anymore, as the process has already exited.
+            // The cleanup should happen after we are sure we are done with the communicator instance.
+            // Let's call the cleanup helper.
+            CleanUpCommunicator();
+            ExecutePythonScriptCommand.NotifyCanExecuteChanged();
+        });
+    }
+
 
     private bool CanExecutePythonScript()
     {
@@ -180,15 +228,6 @@ public partial class MainViewModel : ObservableObject
         Logs.Add("[INFO] Input data cleared.");
     }
 
-    [RelayCommand]
-    private void StopPythonProcess()
-    {
-        Logs.Add("[INFO] Stop command issued. Terminating Python process if running.");
-        // Use null-conditional operator for safety, as communicator is null in design mode.
-        _ipcCommunicator?.StopProcess();
-        IsProcessing = false;
-    }
-
     // --- Event Handlers from IPC Communicator ---
 
     private void OnOutputReceived(string output)
@@ -208,14 +247,4 @@ public partial class MainViewModel : ObservableObject
         });
     }
 
-    private void OnProcessExited(int exitCode)
-    {
-        Application.Current?.Dispatcher.Invoke(() =>
-        {
-            Logs.Add($"[INFO] Python process exited with code: {exitCode}");
-            IsProcessing = false;
-            _ipcCommunicator?.StopProcess();
-            (ExecutePythonScriptCommand as IRelayCommand)?.NotifyCanExecuteChanged();
-        });
-    }
 }

@@ -18,4 +18,13 @@
     <Folder Include="Views\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="PythonScripts\simple_processor.py">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="PythonScripts\simple_processorTest1.py">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

@@ -59,7 +59,7 @@ public class StandardIOProcessCommunicator : IPythonProcessCommunicator
             StandardErrorEncoding = Encoding.UTF8
         };
 
-        _pythonProcess = new Process { StartInfo = startInfo };
+        _pythonProcess = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
         _pythonProcess.EnableRaisingEvents = true; // Essential to subscribe to Exited event
         _pythonProcess.Exited += (sender, e) => ProcessExited?.Invoke(_pythonProcess.ExitCode);
 
@@ -78,6 +78,10 @@ public class StandardIOProcessCommunicator : IPythonProcessCommunicator
             // For robustness, you might want to await for a short period or specific output
             // to confirm the Python script is ready to receive input.
             await Task.Delay(100); // Small delay to allow Python process to initialize
+            if (_pythonProcess.HasExited)
+            {
+                throw new InvalidOperationException($"Python process exited immediately with code {_pythonProcess.ExitCode}. Check logs for errors.");
+            }
         }
         catch (Exception ex)
         {

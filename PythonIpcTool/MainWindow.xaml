@@ -88,11 +88,10 @@
                     <TextBlock Text="IPC Communication Mode:" Margin="0 0 0 5"/>
                     <StackPanel Orientation="Horizontal">
                         <RadioButton GroupName="IpcMode" Content="Standard I/O"
-                                     IsChecked="{Binding SelectedIpcMode, Mode=TwoWay, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:IpcMode.StandardIO}}"
-                                     Margin="0 0 15 0"/>
-                        <RadioButton GroupName="IpcMode" Content="Local Socket (Future)"
-                                     IsChecked="{Binding SelectedIpcMode, Mode=TwoWay, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:IpcMode.LocalSocket}}"
-                                     IsEnabled="False"/>
+                 IsChecked="{Binding SelectedIpcMode, Mode=TwoWay, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:IpcMode.StandardIO}}"
+                 Margin="0 0 15 0"/>
+                        <RadioButton GroupName="IpcMode" Content="Local Socket"
+                 IsChecked="{Binding SelectedIpcMode, Mode=TwoWay, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:IpcMode.LocalSocket}}"/>
                         <TextBlock Text="(Data Exchanged: JSON format)" VerticalAlignment="Center" Margin="10 0 0 0" Opacity="0.7"/>
                     </StackPanel>
                 </StackPanel>
