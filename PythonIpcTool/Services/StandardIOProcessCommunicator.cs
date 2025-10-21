@@ -5,7 +5,8 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using PythonIpcTool.Models; // Ensure this namespace is correct for IpcMode
+using PythonIpcTool.Models;
+using Serilog; // Ensure this namespace is correct for IpcMode
 
 namespace PythonIpcTool.Services;
 
@@ -15,8 +16,7 @@ namespace PythonIpcTool.Services;
 public class StandardIOProcessCommunicator : IPythonProcessCommunicator
 {
     private Process? _pythonProcess; // The Python process instance
-    private CancellationTokenSource? _outputCancellationTokenSource; // Token for reading stdout
-    private CancellationTokenSource? _errorCancellationTokenSource;  // Token for reading stderr
+    private CancellationTokenSource? _internalReadCts;
 
     // Events to notify listeners of received output, errors, or process exit
     public event Action<string>? OutputReceived;
@@ -33,61 +33,64 @@ public class StandardIOProcessCommunicator : IPythonProcessCommunicator
     /// <returns>A Task representing the asynchronous operation.</returns>
     /// <exception cref="ArgumentException">Thrown if mode is not StandardIO.</exception>
     /// <exception cref="InvalidOperationException">Thrown if the process fails to start.</exception>
-    public async Task StartProcessAsync(string pythonInterpreterPath, string scriptPath, IpcMode mode)
+    public async Task StartProcessAsync(string pythonInterpreterPath, string scriptPath, IpcMode mode, CancellationToken cancellationToken)
     {
         if (mode != IpcMode.StandardIO)
         {
             throw new ArgumentException("StandardIOProcessCommunicator only supports IpcMode.StandardIO");
         }
-
-        // Ensure previous process is stopped before starting a new one
         StopProcess();
-
-        _outputCancellationTokenSource = new CancellationTokenSource();
-        _errorCancellationTokenSource = new CancellationTokenSource();
+        _internalReadCts = new CancellationTokenSource();
 
         var startInfo = new ProcessStartInfo
         {
             FileName = pythonInterpreterPath,
-            Arguments = scriptPath,
-            UseShellExecute = false, // Must be false to redirect I/O
+            Arguments = $"\"{scriptPath}\"",
+            UseShellExecute = false,
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            CreateNoWindow = true, // Do not open a new window for the Python process
-            StandardOutputEncoding = Encoding.UTF8, // Specify UTF-8 for consistent encoding
+            CreateNoWindow = true,
+            StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8
         };
 
         _pythonProcess = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
-        _pythonProcess.EnableRaisingEvents = true; // Essential to subscribe to Exited event
-        _pythonProcess.Exited += (sender, e) => ProcessExited?.Invoke(_pythonProcess.ExitCode);
+        _pythonProcess.Exited += (sender, e) => ProcessExited?.Invoke(_pythonProcess?.ExitCode ?? -1);
 
         try
         {
+            cancellationToken.ThrowIfCancellationRequested(); // Check for cancellation before starting
+
             bool started = _pythonProcess.Start();
             if (!started)
             {
                 throw new InvalidOperationException($"Failed to start Python process: {pythonInterpreterPath} {scriptPath}");
             }
 
-            // Start asynchronous reading of StandardOutput and StandardError
-            _ = ReadStreamAsync(_pythonProcess.StandardOutput, OutputReceived, _outputCancellationTokenSource.Token);
-            _ = ReadStreamAsync(_pythonProcess.StandardError, ErrorReceived, _errorCancellationTokenSource.Token);
+            // Start background reading tasks with an internal token so they can be stopped separately
+            _ = ReadStreamAsync(_pythonProcess.StandardOutput, OutputReceived, _internalReadCts.Token);
+            _ = ReadStreamAsync(_pythonProcess.StandardError, ErrorReceived, _internalReadCts.Token);
 
-            // For robustness, you might want to await for a short period or specific output
-            // to confirm the Python script is ready to receive input.
-            await Task.Delay(100); // Small delay to allow Python process to initialize
+            // USAGE: Use the external cancellationToken for the startup delay.
+            // This allows the user's "Cancel" action to interrupt the startup process.
+            await Task.Delay(100, cancellationToken);
+
             if (_pythonProcess.HasExited)
             {
                 throw new InvalidOperationException($"Python process exited immediately with code {_pythonProcess.ExitCode}. Check logs for errors.");
             }
         }
-        catch (Exception ex)
+        catch (OperationCanceledException)
         {
-            ErrorReceived?.Invoke($"Failed to start Python process: {ex.Message}");
-            StopProcess(); // Clean up if start fails
-            throw; // Re-throw to inform the caller (ViewModel)
+            Log.Warning("Process start was canceled by the user.");
+            StopProcess(); // Ensure cleanup if canceled during startup
+            throw; // Re-throw so the ViewModel knows it was canceled
+        }
+        catch (Exception)
+        {
+            StopProcess(); // Ensure cleanup on any other failure
+            throw;
         }
     }
 
@@ -98,23 +101,27 @@ public class StandardIOProcessCommunicator : IPythonProcessCommunicator
     /// <param name="message">The message to send (e.g., a JSON string).</param>
     /// <returns>A Task representing the asynchronous operation.</returns>
     /// <exception cref="InvalidOperationException">Thrown if the Python process is not running.</exception>
-    public async Task SendMessageAsync(string message)
+    public async Task SendMessageAsync(string message, CancellationToken cancellationToken)
     {
         if (_pythonProcess == null || _pythonProcess.HasExited)
         {
             throw new InvalidOperationException("Python process is not running.");
         }
-
         try
         {
-            // Write the message followed by a newline to signal end of input
-            await _pythonProcess.StandardInput.WriteLineAsync(message);
-            // Ensure the buffer is flushed immediately
-            await _pythonProcess.StandardInput.FlushAsync();
+            // USAGE: Use the WriteLineAsync overload that accepts a CancellationToken.
+            // .AsMemory() is an efficient way to pass the string data.
+            await _pythonProcess.StandardInput.WriteLineAsync(message.AsMemory(), cancellationToken);
+            await _pythonProcess.StandardInput.FlushAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            Log.Warning("SendMessageAsync was canceled by the user.");
+            throw; // Re-throw to inform the ViewModel
         }
         catch (Exception ex)
         {
-            ErrorReceived?.Invoke($"Failed to write to Python process input: {ex.Message}");
+            Log.Error(ex, "Failed to write to Python process standard input.");
             throw;
         }
     }
@@ -125,45 +132,30 @@ public class StandardIOProcessCommunicator : IPythonProcessCommunicator
     /// </summary>
     public void StopProcess()
     {
+        _internalReadCts?.Cancel(); // Stop the background reading tasks
+
         if (_pythonProcess != null && !_pythonProcess.HasExited)
         {
             try
             {
-                // Attempt to gracefully close standard input first
-                _pythonProcess.StandardInput.Close();
-                // Give it a moment to exit naturally
-                if (!_pythonProcess.WaitForExit(2000)) // Wait for 2 seconds
-                {
-                    _pythonProcess.Kill(); // If not exited, force kill
-                }
+                Log.Debug("Forcefully terminating Python process.");
+                _pythonProcess.Kill(true); // Kill the entire process tree
+                //if (!_pythonProcess.WaitForExit(1000))
+                //{
+                //    Log.Warning("Process did not exit gracefully, killing it.");
+                //    _pythonProcess.Kill(true); // Kill the entire process tree
+                //}
             }
             catch (Exception ex)
             {
-                // Log or report error if process killing fails
-                ErrorReceived?.Invoke($"Error stopping Python process: {ex.Message}");
+                Log.Error(ex, "Error while stopping Python process.");
             }
-            finally
-            {
-                _outputCancellationTokenSource?.Cancel();
-                _errorCancellationTokenSource?.Cancel();
-                _outputCancellationTokenSource?.Dispose();
-                _errorCancellationTokenSource?.Dispose();
-                _outputCancellationTokenSource = null;
-                _errorCancellationTokenSource = null;
+        }
 
-                _pythonProcess.Dispose();
-                _pythonProcess = null;
-            }
-        }
-        else
-        {
-            _outputCancellationTokenSource?.Cancel();
-            _errorCancellationTokenSource?.Cancel();
-            _outputCancellationTokenSource?.Dispose();
-            _errorCancellationTokenSource?.Dispose();
-            _outputCancellationTokenSource = null;
-            _errorCancellationTokenSource = null;
-        }
+        _pythonProcess?.Dispose();
+        _pythonProcess = null;
+        _internalReadCts?.Dispose();
+        _internalReadCts = null;
     }
 
     /// <summary>
@@ -193,11 +185,14 @@ public class StandardIOProcessCommunicator : IPythonProcessCommunicator
         catch (OperationCanceledException)
         {
             // Task was canceled, expected behavior
+            Log.Warning("SendMessageAsync was canceled.");
         }
         catch (Exception ex)
         {
-            // Log or report other reading errors
-            ErrorReceived?.Invoke($"Error reading stream: {ex.Message}");
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                Log.Error(ex, "Error reading from standard I/O stream.");
+            }
         }
     }
 }

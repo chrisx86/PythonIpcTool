@@ -8,7 +8,7 @@ public interface IPythonProcessCommunicator
     event Action<string> ErrorReceived;
     event Action<int> ProcessExited;
 
-    Task StartProcessAsync(string pythonInterpreterPath, string scriptPath, IpcMode mode);
-    Task SendMessageAsync(string message);
+    Task StartProcessAsync(string pythonInterpreterPath, string scriptPath, IpcMode mode, CancellationToken cancellationToken);
+    Task SendMessageAsync(string message, CancellationToken cancellationToken);
     void StopProcess();
 }

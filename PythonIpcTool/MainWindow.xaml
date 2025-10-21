@@ -8,157 +8,223 @@
                       xmlns:models="clr-namespace:PythonIpcTool.Models"
                       xmlns:converters="clr-namespace:PythonIpcTool.Converters"
                       xmlns:Controls="clr-namespace:MahApps.Metro.Controls;assembly=MahApps.Metro"
+                      xmlns:iconPacks="http://metro.mahapps.com/winfx/xaml/iconpacks"
                       mc:Ignorable="d"
                       Title="Python IPC Tool"
-                      Height="700" Width="1000"
-                      MinHeight="500" MinWidth="800"
+                      Height="720" Width="1200"
+                      MinHeight="600" MinWidth="900"
                       WindowStartupLocation="CenterScreen"
-                      d:DataContext="{d:DesignInstance Type=vm:DesignMainViewModel, IsDesignTimeCreatable=True}">
-    
+                      d:DataContext="{d:DesignInstance Type=vm:DesignMainViewModel, IsDesignTimeCreatable=True}"
+                      GlowBrush="{DynamicResource MahApps.Brushes.Accent}">
+
     <Controls:MetroWindow.Resources>
-        <converters:BooleanToInverseConverter x:Key="InverseBooleanConverter"/>
-        <converters:EnumToBooleanConverter x:Key="EnumToBooleanConverter"/>
-        <converters:LogEntryToColorConverter x:Key="LogEntryToColorConverter"/>
+        <!-- Define all converters in a central place for clarity -->
+        <ResourceDictionary>
+            <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+            <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter"/>
+            <converters:EnumToBooleanConverter x:Key="EnumToBooleanConverter"/>
+            <converters:LogLevelToBrushConverter x:Key="LogLevelToBrushConverter"/>
+        </ResourceDictionary>
     </Controls:MetroWindow.Resources>
 
-    <Grid Margin="10">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="2*"/>
-            <!-- Configuration & Input -->
-            <ColumnDefinition Width="*"/>
-            <!-- Output Data & Status/Log -->
-        </Grid.ColumnDefinitions>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <!-- Configuration Section -->
-            <RowDefinition Height="*"/>
-            <!-- Input Data & Output/Log Sections -->
-        </Grid.RowDefinitions>
+    <!-- Right-side commands in the title bar for theme toggling -->
+    <Controls:MetroWindow.RightWindowCommands>
+        <Controls:WindowCommands>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="Dark Mode" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                <Controls:ToggleSwitch IsOn="{Binding IsDarkMode, Mode=TwoWay}"
+                                       OnContent="" OffContent=""
+                                       AutomationProperties.Name="Theme Toggle"/>
+            </StackPanel>
+        </Controls:WindowCommands>
+    </Controls:MetroWindow.RightWindowCommands>
 
-        <!-- Region 1: Configuration & Input Controls (Left Column) -->
-        <Border Grid.Row="0" Grid.Column="0" Grid.RowSpan="2" 
-                Background="{DynamicResource MahApps.Brushes.Control.Background}"
-                BorderBrush="{DynamicResource MahApps.Brushes.Accent}"
-                BorderThickness="1" CornerRadius="5"
-                Padding="15" Margin="0 0 10 0">
+    <!-- Main Content Grid: Divides the window into two primary columns -->
+    <Grid Margin="15">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="1.5*" MinWidth="400"/>
+            <!-- Left Column for input and configuration -->
+            <ColumnDefinition Width="2*" MinWidth="450"/>
+            <!-- Right Column for output and logs -->
+        </Grid.ColumnDefinitions>
+
+        <!-- =================================================================== -->
+        <!-- LEFT COLUMN: Configuration and Input                              -->
+        <!-- =================================================================== -->
+        <DockPanel Grid.Column="0" Margin="0 0 10 0">
+            <!-- Action Buttons are docked to the bottom of the left column -->
+            <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0 15 0 0">
+                <Button Command="{Binding ClearInputCommand}">
+                    <StackPanel Orientation="Horizontal">
+                        <iconPacks:PackIconMaterial Kind="CloseCircleOutline" VerticalAlignment="Center" Margin="0 0 5 0"/>
+                        <TextBlock Text="Clear Input"/>
+                    </StackPanel>
+                </Button>
+                <!-- Cancel Button (Visible only when processing) -->
+                <Button Command="{Binding CancelExecutionCommand}"
+                        Visibility="{Binding IsProcessing, Converter={StaticResource BooleanToVisibilityConverter}}"
+                        Background="{DynamicResource MahApps.Brushes.Gray5}"
+                        Margin="10 0 0 0">
+                    <StackPanel Orientation="Horizontal">
+                        <iconPacks:PackIconMaterial Kind="Cancel" VerticalAlignment="Center" Margin="0 0 5 0"/>
+                        <TextBlock Text="Cancel"/>
+                    </StackPanel>
+                </Button>
+                <!-- Execute Button (Visible only when NOT processing) -->
+                <Button Command="{Binding ExecutePythonScriptCommand}"
+                        Style="{DynamicResource MahApps.Styles.Button.Accent}"
+                        Visibility="{Binding IsProcessing, Converter={StaticResource InverseBooleanToVisibilityConverter}}"
+                        Margin="10 0 0 0">
+                    <StackPanel Orientation="Horizontal">
+                        <iconPacks:PackIconMaterial Kind="Play" VerticalAlignment="Center" Margin="0 0 5 0"/>
+                        <TextBlock Text="Execute Script"/>
+                    </StackPanel>
+                </Button>
+                <!-- Busy Indicator -->
+                <Controls:ProgressRing IsActive="{Binding IsProcessing}" Width="20" Height="20" Margin="10 0 0 0"
+                                       Foreground="{DynamicResource MahApps.Brushes.Accent}"/>
+            </StackPanel>
+
+            <!-- Configuration and Input GroupBoxes fill the remaining space -->
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
-                    <!-- Title -->
-                    <RowDefinition Height="Auto"/>
-                    <!-- Python Interpreter Path -->
-                    <RowDefinition Height="Auto"/>
-                    <!-- Python Script Path -->
-                    <RowDefinition Height="Auto"/>
-                    <!-- IPC Mode Selection -->
+                    <!-- Configuration -->
                     <RowDefinition Height="*"/>
-                    <!-- Input Data Area -->
-                    <RowDefinition Height="Auto"/>
-                    <!-- Action Buttons -->
+                    <!-- Input Data -->
                 </Grid.RowDefinitions>
 
-                <!-- Configuration Title -->
-                <TextBlock Grid.Row="0" Text="Configuration &amp; Input" 
-                           Style="{DynamicResource MahApps.Styles.TextBlock.Title}" 
-                           Margin="0 0 0 15"/>
+                <!-- Configuration GroupBox -->
+                <GroupBox Grid.Row="0">
+                    <GroupBox.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <iconPacks:PackIconMaterial Kind="Cogs" VerticalAlignment="Center" Margin="0 0 5 0"/>
+                            <TextBlock Text="Configuration" FontWeight="Bold"/>
+                        </StackPanel>
+                    </GroupBox.Header>
+                    <StackPanel Margin="5">
+                        <TextBlock Text="Python Interpreter Path:" Margin="0 5 0 2"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0" Text="{Binding PythonInterpreterPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     Controls:TextBoxHelper.Watermark="e.g., C:\Python\python.exe or 'python' if in PATH"
+                                     Controls:TextBoxHelper.ClearTextButton="True"/>
+                            <Button Grid.Column="1" Content="Browse..." Command="{Binding BrowsePythonInterpreterCommand}" Margin="5 0 0 0"/>
+                        </Grid>
 
-                <!-- Python Interpreter Path -->
-                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0 0 0 10">
-                    <TextBlock Text="Python Interpreter Path:" VerticalAlignment="Center" Width="150"/>
-                    <TextBox Text="{Binding PythonInterpreterPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                             Controls:TextBoxHelper.Watermark="e.g., C:\Python\Python39\python.exe"
-                             Controls:TextBoxHelper.ClearTextButton="True"
-                             Width="250" Margin="5 0 0 0" />
-                    <Button Content="Browse..." Command="{Binding BrowsePythonInterpreterCommand}" Margin="5 0 0 0"/>
-                </StackPanel>
+                        <TextBlock Text="Python Script Path:" Margin="0 10 0 2"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0" Text="{Binding PythonScriptPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     Controls:TextBoxHelper.Watermark="e.g., C:\Scripts\my_script.py"
+                                     Controls:TextBoxHelper.ClearTextButton="True"/>
+                            <Button Grid.Column="1" Content="Browse..." Command="{Binding BrowsePythonScriptCommand}" Margin="5 0 0 0"/>
+                        </Grid>
 
-                <!-- Python Script Path -->
-                <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0 0 0 10">
-                    <TextBlock Text="Python Script Path:" VerticalAlignment="Center" Width="150"/>
-                    <TextBox Text="{Binding PythonScriptPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                             Controls:TextBoxHelper.Watermark="e.g., C:\Scripts\my_script.py"
-                             Controls:TextBoxHelper.ClearTextButton="True"
-                             Width="250" Margin="5 0 0 0"/>
-                    <Button Content="Browse..." Command="{Binding BrowsePythonScriptCommand}" Margin="5 0 0 0"/>
-                </StackPanel>
-
-                <!-- IPC Mode Selection -->
-                <StackPanel Grid.Row="3" Orientation="Vertical" Margin="0 0 0 15">
-                    <TextBlock Text="IPC Communication Mode:" Margin="0 0 0 5"/>
-                    <StackPanel Orientation="Horizontal">
-                        <RadioButton GroupName="IpcMode" Content="Standard I/O"
-                 IsChecked="{Binding SelectedIpcMode, Mode=TwoWay, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:IpcMode.StandardIO}}"
-                 Margin="0 0 15 0"/>
-                        <RadioButton GroupName="IpcMode" Content="Local Socket"
-                 IsChecked="{Binding SelectedIpcMode, Mode=TwoWay, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:IpcMode.LocalSocket}}"/>
-                        <TextBlock Text="(Data Exchanged: JSON format)" VerticalAlignment="Center" Margin="10 0 0 0" Opacity="0.7"/>
+                        <TextBlock Text="IPC Communication Mode:" Margin="0 10 0 5"/>
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton GroupName="IpcMode" Content="Standard I/O"
+                                         IsChecked="{Binding SelectedIpcMode, Mode=TwoWay, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:IpcMode.StandardIO}}"
+                                         Margin="0 0 15 0"/>
+                            <RadioButton GroupName="IpcMode" Content="Local Socket"
+                                         IsChecked="{Binding SelectedIpcMode, Mode=TwoWay, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:IpcMode.LocalSocket}}"/>
+                        </StackPanel>
                     </StackPanel>
-                </StackPanel>
+                </GroupBox>
 
-                <!-- Input Data Area -->
-                <StackPanel Grid.Row="4" Orientation="Vertical" Margin="0 0 0 15">
-                    <TextBlock Text="Input Data (JSON):" Margin="0 0 5 5"/>
+                <!-- Input Data GroupBox -->
+                <GroupBox Grid.Row="1" Margin="0 10 0 0">
+                    <GroupBox.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <iconPacks:PackIconMaterial Kind="CodeJson" VerticalAlignment="Center" Margin="0 0 5 0"/>
+                            <TextBlock Text="Input Data (JSON)" FontWeight="Bold"/>
+                        </StackPanel>
+                    </GroupBox.Header>
                     <TextBox Text="{Binding InputData, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                              AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
-                             MinHeight="150" MaxHeight="300"
-                             Controls:TextBoxHelper.Watermark="Enter JSON data for Python script here..." />
-                </StackPanel>
-
-                <!-- Action Buttons -->
-                <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right">
-                    <Button Content="Clear Input" Command="{Binding ClearInputCommand}" Margin="0 0 10 0"/>
-                    <Button Content="Execute Python Script" 
-                            Command="{Binding ExecutePythonScriptCommand}" 
-                            Style="{DynamicResource MahApps.Styles.Button.Accent}"/>
-                    <Controls:ProgressRing IsActive="{Binding IsProcessing}" Width="20" Height="20" Margin="10 0 0 0"/>
-                </StackPanel>
+                             FontFamily="Consolas, Cascadia Mono, Courier New"
+                             Controls:TextBoxHelper.Watermark="Enter JSON data for Python script here..."/>
+                </GroupBox>
             </Grid>
-        </Border>
+        </DockPanel>
 
-        <!-- Region 2: Output Data & Status/Log (Right Column) -->
-        <StackPanel Grid.Row="0" Grid.Column="1" Grid.RowSpan="2" Margin="10 0 0 0">
-            <!-- Output Data Area -->
-            <Border BorderBrush="{DynamicResource MahApps.Brushes.Accent}" BorderThickness="1" CornerRadius="5"
-                    Padding="15" Margin="0 0 0 10" MinHeight="200" MaxHeight="350">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="Output Data from Python Script:" 
-                               Style="{DynamicResource MahApps.Styles.TextBlock.Title}" 
-                               Margin="0 0 0 10"/>
-                    <TextBox Grid.Row="1" Text="{Binding OutputResult, Mode=OneWay}"
-                             AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
-                             IsReadOnly="True"
-                             Controls:TextBoxHelper.Watermark="Output from Python script will appear here..."/>
-                </Grid>
-            </Border>
+        <!-- =================================================================== -->
+        <!-- RIGHT COLUMN: Output and Logs                                       -->
+        <!-- =================================================================== -->
+        <Grid Grid.Column="1" Margin="10 0 0 0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="1.5*" MinHeight="150"/>
+                <!-- Output Data -->
+                <RowDefinition Height="Auto"/>
+                <!-- Grid Splitter -->
+                <RowDefinition Height="2*" MinHeight="200"/>
+                <!-- Logs -->
+            </Grid.RowDefinitions>
 
-            <!-- Status & Log Area -->
-            <Border BorderBrush="{DynamicResource MahApps.Brushes.Accent}" BorderThickness="1" CornerRadius="5"
-                    Padding="15" MinHeight="150">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="Status &amp; Log:" 
-                               Style="{DynamicResource MahApps.Styles.TextBlock.Title}" 
-                               Margin="0 0 0 10"/>
-                    <ListView Grid.Row="1" ItemsSource="{Binding Logs}"
-                              ScrollViewer.VerticalScrollBarVisibility="Auto"
-                              Background="Transparent" BorderThickness="0">
-                        <ListView.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding}"
-                                           Foreground="{Binding Converter={StaticResource LogEntryToColorConverter}}"/>
-                            </DataTemplate>
-                        </ListView.ItemTemplate>
-                    </ListView>
-                </Grid>
-            </Border>
-        </StackPanel>
+            <!-- Output Data GroupBox -->
+            <GroupBox Grid.Row="0">
+                <GroupBox.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <iconPacks:PackIconMaterial Kind="ArrowLeftBoldBoxOutline" VerticalAlignment="Center" Margin="0 0 5 0"/>
+                        <TextBlock Text="Output Data from Python" FontWeight="Bold"/>
+                    </StackPanel>
+                </GroupBox.Header>
+                <TextBox Text="{Binding OutputResult, Mode=OneWay}"
+                         AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                         IsReadOnly="True"
+                         FontFamily="Consolas, Cascadia Mono, Courier New"
+                         Controls:TextBoxHelper.Watermark="Output from Python script will appear here..."/>
+            </GroupBox>
+
+            <!-- Grid Splitter for resizing -->
+            <GridSplitter Grid.Row="1" Height="5" HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                          Background="Transparent"/>
+
+            <!-- Status & Log GroupBox -->
+            <GroupBox Grid.Row="2">
+                <GroupBox.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <iconPacks:PackIconMaterial Kind="Console" VerticalAlignment="Center" Margin="0 0 5 0"/>
+                        <TextBlock Text="Status &amp; Log" FontWeight="Bold"/>
+                    </StackPanel>
+                </GroupBox.Header>
+                <ListView ItemsSource="{Binding LogEntries}"
+                          VirtualizingPanel.IsVirtualizing="True" 
+                          VirtualizingPanel.VirtualizationMode="Recycling"
+                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                          BorderThickness="0"
+                          Background="Transparent"
+                          SelectionMode="Extended"
+                          local:ScrollViewerExtensions.AutoScrollToEnd="True">
+
+                    <ListView.View>
+                        <GridView AllowsColumnReorder="False">
+                            <GridViewColumn Header="Timestamp" Width="120"
+                                            DisplayMemberBinding="{Binding Timestamp, StringFormat='HH:mm:ss.fff'}"/>
+                            <GridViewColumn Header="Level" Width="90">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border CornerRadius="3" Padding="5,2" Margin="2"
+                                                Background="{Binding Level, Converter={StaticResource LogLevelToBrushConverter}}">
+                                            <TextBlock Text="{Binding Level}" FontWeight="Bold" Foreground="White"
+                                                       HorizontalAlignment="Center"/>
+                                        </Border>
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                            <GridViewColumn Header="Message" Width="500" 
+                                            DisplayMemberBinding="{Binding Message}"/>
+                        </GridView>
+                    </ListView.View>
+                </ListView>
+            </GroupBox>
+        </Grid>
     </Grid>
 
 </Controls:MetroWindow>

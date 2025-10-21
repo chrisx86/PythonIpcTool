@@ -18,7 +18,7 @@ public class DesignMainViewModel : MainViewModel
         // You can leave this empty, or add/override more specific data if you want
         // the design-time view to look different from the base MainViewModel's design mode.
         // For example:
-        // Logs.Add("[DESIGN] Specific data from DesignMainViewModel.");
+        // Log.Information("[DESIGN] Specific data from DesignMainViewModel.");
     }
 }
 

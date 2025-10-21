@@ -8,6 +8,8 @@ namespace PythonIpcTool.Models;
 /// </summary>
 public class AppSettings
 {
+    [JsonPropertyName("isDarkMode")]
+    public bool IsDarkMode { get; set; } = false; // Default to light mode
     /// <summary>
     /// The file path to the Python interpreter executable.
     /// </summary>

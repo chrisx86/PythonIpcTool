@@ -6,6 +6,12 @@ using PythonIpcTool.Models;
 using PythonIpcTool.Services;
 using System.IO;
 using System.ComponentModel;
+using MahApps.Metro.Controls;
+using MahApps.Metro.IconPacks;
+using ControlzEx.Theming;
+using Serilog.Events;
+using Serilog;
+using System.Text.Json;
 
 namespace PythonIpcTool.ViewModels;
 
@@ -14,6 +20,7 @@ namespace PythonIpcTool.ViewModels;
 /// </summary>
 public partial class MainViewModel : ObservableObject
 {
+    private CancellationTokenSource? _cancellationSource;
     private readonly IConfigurationService? _configurationService;
     // Field is now nullable to accommodate design-time instance where it will be null.
     private IPythonProcessCommunicator? _activeCommunicator;
@@ -44,12 +51,17 @@ public partial class MainViewModel : ObservableObject
     // Property to indicate if a process is currently running (for UI busy state)
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CancelExecutionCommand))]
     private bool _isProcessing;
 
     // Property for selecting IPC mode
     [ObservableProperty]
     private IpcMode _selectedIpcMode = IpcMode.StandardIO;
     partial void OnSelectedIpcModeChanged(IpcMode value) => SaveCurrentSettings();
+
+    public ObservableCollection<LogEntry> LogEntries { get; } = new ObservableCollection<LogEntry>();
+
+
 
     /// <summary>
     /// Initializes a new instance of the MainViewModel class for the XAML designer.
@@ -80,21 +92,46 @@ public partial class MainViewModel : ObservableObject
     public MainViewModel(IConfigurationService configurationService)
     {
         _configurationService = configurationService ?? throw new ArgumentNullException(nameof(configurationService));
-
+        App.LogEvents.CollectionChanged += OnLogEvent;
         // Load settings at startup
         LoadInitialSettings();
 
-        Logs.Add("[INFO] Application started. Ready for input.");
+        Log.Information("[INFO] Application started. Ready for input.");
+    }
+
+    private void OnLogEvent(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Add && e.NewItems != null)
+        {
+            foreach (LogEvent logEvent in e.NewItems)
+            {
+                // This logic remains the same.
+                // We need to dispatch this to the UI thread.
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    LogEntries.Add(new LogEntry(logEvent));
+                });
+            }
+        }
     }
 
     private void PopulateDesignTimeData()
     {
         Logs.Clear();
-        Logs.Add("[DESIGN] Application started in design mode.");
-        Logs.Add("[DESIGN] This is a log entry visible only in the designer.");
-        Logs.Add("[ERROR] This is a design-time error message.");
+        Log.Information("[DESIGN] Application started in design mode.");
+        Log.Information("[DESIGN] This is a log entry visible only in the designer.");
+        Log.Information("[ERROR] This is a design-time error message.");
         OutputResult = "{\"result\": \"This is a sample JSON output shown at design time.\"}";
         IsProcessing = true; // To test the ProgressRing visibility in the designer
+    }
+
+    [ObservableProperty]
+    private bool _isDarkMode;
+    partial void OnIsDarkModeChanged(bool value)
+    {
+        // Use ThemeManager to change the theme
+        ThemeManager.Current.ChangeTheme(Application.Current, value ? "Dark.Blue" : "Light.Blue");
+        SaveCurrentSettings();
     }
 
     /// <summary>
@@ -115,6 +152,8 @@ public partial class MainViewModel : ObservableObject
         PythonInterpreterPath = settings.PythonInterpreterPath;
         PythonScriptPath = scriptPath;
         SelectedIpcMode = settings.LastUsedIpcMode;
+        IsDarkMode = settings.IsDarkMode;
+        ThemeManager.Current.ChangeTheme(Application.Current, IsDarkMode ? "Dark.Blue" : "Light.Blue");
     }
 
     /// <summary>
@@ -126,7 +165,8 @@ public partial class MainViewModel : ObservableObject
         {
             PythonInterpreterPath = this.PythonInterpreterPath,
             PythonScriptPath = this.PythonScriptPath,
-            LastUsedIpcMode = this.SelectedIpcMode
+            LastUsedIpcMode = this.SelectedIpcMode,
+            IsDarkMode = this.IsDarkMode
         };
         _configurationService.SaveSettings(settings);
     }
@@ -137,10 +177,11 @@ public partial class MainViewModel : ObservableObject
     private async Task ExecutePythonScriptAsync()
     {
         IsProcessing = true;
-        OutputResult = "";
+        //OutputResult = "";
         Logs.Clear();
-        Logs.Add($"[INFO] Starting Python script in {SelectedIpcMode} mode...");
-        StopPythonProcess();
+        Log.Information($"[INFO] Starting Python script in {SelectedIpcMode} mode...");
+
+        _cancellationSource = new CancellationTokenSource();
         IPythonProcessCommunicator? localCommunicator = null;
 
         // --- MODIFICATION START: Dynamic Communicator Creation ---
@@ -160,26 +201,47 @@ public partial class MainViewModel : ObservableObject
             _activeCommunicator.ProcessExited += OnProcessExited;
 
             // Now, start the process using the newly created communicator
-            await _activeCommunicator.StartProcessAsync(PythonInterpreterPath, PythonScriptPath, SelectedIpcMode);
-            Logs.Add($"[INFO] Python process started: {Path.GetFileName(PythonInterpreterPath)}");
+            await _activeCommunicator.StartProcessAsync(PythonInterpreterPath, PythonScriptPath, SelectedIpcMode, _cancellationSource.Token);
+            Log.Information($"[INFO] Python process started: {Path.GetFileName(PythonInterpreterPath)}");
 
-            await _activeCommunicator.SendMessageAsync(InputData);
-            Logs.Add($"[INFO] Input sent: {InputData}");
+            await _activeCommunicator.SendMessageAsync(InputData, _cancellationSource.Token);
+            Log.Information($"[INFO] Input sent: {InputData}");
+        }
+        catch (OperationCanceledException)
+        {
+            Log.Warning("Execution was canceled by the user.");
+            // CRITICAL FIX: The cancellation block MUST clean up its own state.
+            // It cannot rely on the OnProcessExited event, which may not fire predictably.
+            IsProcessing = false;
+            StopPythonProcess(); // Ensure all resources are released immediately.
         }
         catch (Exception ex)
         {
-            OnErrorReceived($"[ERROR] Execution failed: {ex.Message}");
-            CleanUpCommunicator(); // Ensure cleanup on failure
+            Log.Error("Execution was canceled by the user.");
+            StopPythonProcess();
             IsProcessing = false;
         }
     }
+
+    [RelayCommand(CanExecute = nameof(CanCancelExecution))]
+    private void CancelExecution()
+    {
+        Log.Information("Cancellation requested by user.");
+        _cancellationSource?.Cancel();
+    }
+    private bool CanCancelExecution() => IsProcessing;
 
     // NEW: Add a command to stop the process, which is good for window closing event
     [RelayCommand]
     private void StopPythonProcess()
     {
-        Logs.Add("[INFO] Stopping Python process...");
+        Log.Debug("Stopping and cleaning up active communicator.");
         CleanUpCommunicator();
+        if (_cancellationSource != null)
+        {
+            _cancellationSource.Dispose();
+            _cancellationSource = null;
+        }
     }
 
     // NEW: Helper method for cleanup to avoid code duplication
@@ -197,21 +259,20 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-
     private void OnProcessExited(int exitCode)
     {
         App.Current.Dispatcher.Invoke(() =>
         {
-            Logs.Add($"[INFO] Python process exited with code: {exitCode}");
+            Log.Information($"[INFO] Python process exited with code: {exitCode}");
             IsProcessing = false;
             // No need to call StopProcess here anymore, as the process has already exited.
             // The cleanup should happen after we are sure we are done with the communicator instance.
             // Let's call the cleanup helper.
             CleanUpCommunicator();
+            StopPythonProcess();
             ExecutePythonScriptCommand.NotifyCanExecuteChanged();
         });
     }
-
 
     private bool CanExecutePythonScript()
     {
@@ -267,25 +328,43 @@ public partial class MainViewModel : ObservableObject
     private void ClearInput()
     {
         InputData = "";
-        Logs.Add("[INFO] Input data cleared.");
+        Log.Information("[INFO] Input data cleared.");
     }
 
     // --- Event Handlers from IPC Communicator ---
 
     private void OnOutputReceived(string output)
     {
-        Application.Current?.Dispatcher.Invoke(() =>
+        App.Current.Dispatcher.Invoke(() =>
         {
-            OutputResult += output + Environment.NewLine;
-            Logs.Add($"[PYTHON OUT] {output}");
+            string formattedOutput = TryFormatJson(output);
+            OutputResult += formattedOutput + Environment.NewLine;
+            Log.Debug("Python OUT: {Output}", output); // Log raw output at debug level
+            IsProcessing = false;
         });
+    }
+
+    private string TryFormatJson(string jsonString)
+    {
+        try
+        {
+            using var jsonDoc = JsonDocument.Parse(jsonString);
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            return JsonSerializer.Serialize(jsonDoc.RootElement, options);
+        }
+        catch (JsonException)
+        {
+            // If it's not valid JSON, return the original string
+            return jsonString;
+        }
     }
 
     private void OnErrorReceived(string error)
     {
         Application.Current?.Dispatcher.Invoke(() =>
         {
-            Logs.Add($"[ERROR] {error}");
+            Log.Information($"[ERROR] {error}");
+            IsProcessing = false;
         });
     }
 

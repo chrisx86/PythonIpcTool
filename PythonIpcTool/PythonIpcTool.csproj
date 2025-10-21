@@ -11,11 +11,16 @@
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageReference Include="MahApps.Metro" Version="2.4.11" />
+    <PackageReference Include="MahApps.Metro.IconPacks.Material" Version="6.1.0" />
+    <PackageReference Include="Serilog" Version="4.3.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+    <PackageReference Include="Serilog.Sinks.Observable" Version="3.0.0" />
+    <PackageReference Include="Serilog.Sinks.ObservableCollection" Version="1.0.0" />
   </ItemGroup>
 
   <ItemGroup>
+    <Folder Include="Resources\" />
     <Folder Include="Utils\" />
-    <Folder Include="Views\" />
   </ItemGroup>
 
   <ItemGroup>
