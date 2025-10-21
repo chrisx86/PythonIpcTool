@@ -5,6 +5,7 @@ using System.Windows; // Required for DependencyObject
 using PythonIpcTool.Models;
 using PythonIpcTool.Services;
 using System.IO;
+using System.ComponentModel;
 
 namespace PythonIpcTool.ViewModels;
 
@@ -13,21 +14,25 @@ namespace PythonIpcTool.ViewModels;
 /// </summary>
 public partial class MainViewModel : ObservableObject
 {
+    private readonly IConfigurationService? _configurationService;
     // Field is now nullable to accommodate design-time instance where it will be null.
     private IPythonProcessCommunicator? _activeCommunicator;
 
     // Properties for Python interpreter and script paths
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))]
-    private string _pythonInterpreterPath = "C:\\Python310\\python.exe";
+    private string _pythonInterpreterPath = string.Empty;
+    partial void OnPythonInterpreterPathChanged(string value) => SaveCurrentSettings();
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))]
-    private string _pythonScriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "PythonScripts", "simple_processor.py");
+    private string _pythonScriptPath = string.Empty;
+
     // Property for user input data
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))]
     private string _inputData = "{\"value\": \"Hello from C#\", \"numbers\": [1, 2, 3]}";
+    partial void OnPythonScriptPathChanged(string value) => SaveCurrentSettings();
 
     // Property for displaying Python script's output
     [ObservableProperty]
@@ -44,20 +49,27 @@ public partial class MainViewModel : ObservableObject
     // Property for selecting IPC mode
     [ObservableProperty]
     private IpcMode _selectedIpcMode = IpcMode.StandardIO;
+    partial void OnSelectedIpcModeChanged(IpcMode value) => SaveCurrentSettings();
 
     /// <summary>
-    /// This constructor is for runtime use and is typically called with dependency injection.
+    /// Initializes a new instance of the MainViewModel class for the XAML designer.
+    /// This constructor is called only when the ViewModel is created in a design tool.
     /// </summary>
-    public MainViewModel(IPythonProcessCommunicator ipcCommunicator)
+    public MainViewModel()
     {
-        _activeCommunicator = ipcCommunicator ?? throw new ArgumentNullException(nameof(ipcCommunicator));
-
-        // Subscribe to IPC communicator events
-        _activeCommunicator.OutputReceived += OnOutputReceived;
-        _activeCommunicator.ErrorReceived += OnErrorReceived;
-        _activeCommunicator.ProcessExited += OnProcessExited;
-
-        Logs.Add("[INFO] Application started. Ready for input.");
+        if (DesignerProperties.GetIsInDesignMode(new DependencyObject()))
+        {
+            // We are in design mode, use a mock/design service.
+            _configurationService = new DesignConfigurationService();
+            LoadInitialSettings();
+            PopulateDesignTimeData();
+        }
+        else
+        {
+            // This path should ideally not be taken in a production app with DI.
+            // It's a fallback. The constructor with IConfigurationService is preferred.
+            // If you use a DI container, this constructor might not even be needed.
+        }
     }
 
     /// <summary>
@@ -65,28 +77,58 @@ public partial class MainViewModel : ObservableObject
     /// It populates the ViewModel with sample data for design-time visualization.
     /// It does NOT perform any runtime logic or service instantiation.
     /// </summary>
-    public MainViewModel()
+    public MainViewModel(IConfigurationService configurationService)
     {
+        _configurationService = configurationService ?? throw new ArgumentNullException(nameof(configurationService));
+
+        // Load settings at startup
+        LoadInitialSettings();
+
         Logs.Add("[INFO] Application started. Ready for input.");
-        // We can keep the design-time check as a safeguard.
-        //if (!DesignerProperties.GetIsInDesignMode(new DependencyObject()))
-        //{
-        //    // Allow inheritance for runtime scenarios if needed, but for now, we assume
-        //    // the parameterless constructor is only for the designer.
-        //    // In a real DI scenario, this constructor might not even exist or be protected.
-        //    // For now, let's keep the exception to prevent misuse.
-        //    throw new InvalidOperationException("This constructor is intended for design-time use only.");
-        //}
+    }
 
-        //_ipcCommunicator = null;
+    private void PopulateDesignTimeData()
+    {
+        Logs.Clear();
+        Logs.Add("[DESIGN] Application started in design mode.");
+        Logs.Add("[DESIGN] This is a log entry visible only in the designer.");
+        Logs.Add("[ERROR] This is a design-time error message.");
+        OutputResult = "{\"result\": \"This is a sample JSON output shown at design time.\"}";
+        IsProcessing = true; // To test the ProgressRing visibility in the designer
+    }
 
-        //PythonInterpreterPath = @"C:\Path\To\Your\python.exe (Design Time)";
-        //PythonScriptPath = @"C:\Path\To\Your\script.py (Design Time)";
-        //InputData = "{\"message\": \"Sample JSON data for designer\"}";
-        //OutputResult = "This is a sample output result shown only in the designer.";
-        //Logs.Add("[DESIGN] ViewModel loaded in design mode.");
-        //Logs.Add("[DESIGN] This is a sample log entry.");
-        //IsProcessing = true;
+    /// <summary>
+    /// Loads settings from the configuration service and applies them to the ViewModel properties.
+    /// </summary>
+    private void LoadInitialSettings()
+    {
+        var settings = _configurationService.LoadSettings();
+
+        // If loaded script path is empty, provide a sensible default relative path
+        string scriptPath = settings.PythonScriptPath;
+        if (string.IsNullOrWhiteSpace(scriptPath))
+        {
+            scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "PythonScripts", "simple_processor.py");
+        }
+
+        // Apply loaded settings to the ViewModel properties
+        PythonInterpreterPath = settings.PythonInterpreterPath;
+        PythonScriptPath = scriptPath;
+        SelectedIpcMode = settings.LastUsedIpcMode;
+    }
+
+    /// <summary>
+    /// Gathers current settings from ViewModel properties and saves them using the configuration service.
+    /// </summary>
+    private void SaveCurrentSettings()
+    {
+        var settings = new AppSettings
+        {
+            PythonInterpreterPath = this.PythonInterpreterPath,
+            PythonScriptPath = this.PythonScriptPath,
+            LastUsedIpcMode = this.SelectedIpcMode
+        };
+        _configurationService.SaveSettings(settings);
     }
 
     // --- Commands ---

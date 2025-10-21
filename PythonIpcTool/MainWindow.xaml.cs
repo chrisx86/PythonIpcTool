@@ -14,13 +14,9 @@ namespace PythonIpcTool.Views
         {
             InitializeComponent();
 
-            // Create an instance of the StandardIOProcessCommunicator.
-            // NOTE: This direct instantiation is a point of tight coupling and can be
-            // improved later with a factory or a Dependency Injection container.
-            IPythonProcessCommunicator ipcCommunicator = new StandardIOProcessCommunicator();
-
             // Instantiate MainViewModel and set it as the DataContext for this window.
-            this.DataContext = new MainViewModel();
+            IConfigurationService configService = new JsonConfigurationService();
+            this.DataContext = new MainViewModel(configService);
 
             // Register the Closing event to ensure proper resource cleanup.
             this.Closing += MainWindow_Closing;
