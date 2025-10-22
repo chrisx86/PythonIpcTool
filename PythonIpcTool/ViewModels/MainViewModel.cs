@@ -363,19 +363,19 @@ public partial class MainViewModel : ObservableObject
         IsProcessing = true;
         //OutputResult = "";
         Logs.Clear();
-        Log.Information($"[INFO] Starting Python script in {SelectedScriptProfile.SelectedIpcMode} mode...");
+        Log.Information($"[INFO] Starting Python script in {this.SelectedIpcMode} mode...");
 
         _cancellationSource = new CancellationTokenSource();
 
         // --- MODIFICATION START: Dynamic Communicator Creation ---
         try
         {
-            IPythonProcessCommunicator communicator = SelectedScriptProfile.SelectedIpcMode switch
+            IPythonProcessCommunicator communicator = this.SelectedIpcMode switch
             {
                 IpcMode.StandardIO => new StandardIOProcessCommunicator(),
                 IpcMode.LocalSocket => new LocalSocketProcessCommunicator(),
                 // The default case now throws a very specific exception.
-                _ => throw new InvalidOperationException($"IPC mode '{SelectedScriptProfile.SelectedIpcMode}' is not supported.")
+                _ => throw new InvalidOperationException($"IPC mode '{this.SelectedIpcMode}' is not supported.")
             };
             _activeCommunicator = communicator;
             // Subscribe to its events
@@ -390,7 +390,7 @@ public partial class MainViewModel : ObservableObject
                 _cancellationSource.Token);
 
             // Now, start the process using the newly created communicator
-            Log.Information($"[INFO] Python process started: {Path.GetFileName(SelectedScriptProfile.PythonInterpreterPath)}");
+            Log.Information($"[INFO] Python process started: {Path.GetFileName(this.PythonInterpreterPath)}");
             // IMPORTANT: Check for cancellation *before* sending the message.
             // This prevents the "SendMessageAsync was canceled" warning in normal exit scenarios.
             if (_cancellationSource.IsCancellationRequested)
@@ -508,10 +508,14 @@ public partial class MainViewModel : ObservableObject
             Title = "Select Python Script"
         };
 
-        if (openFileDialog.ShowDialog() == true && SelectedScriptProfile != null)
+        if (openFileDialog.ShowDialog() == true)
         {
-            PythonScriptPath = PythonScriptPath;
-            SelectedScriptProfile.PythonScriptPath = openFileDialog.FileName;
+            // --- CORRECTED LOGIC ---
+            // 1. Always update the main "Current Configuration" property.
+            PythonScriptPath = openFileDialog.FileName;
+
+            // 2. (UX Improvement) Deselect the current profile.
+            SelectedScriptProfile = null;
         }
     }
 
@@ -524,13 +528,18 @@ public partial class MainViewModel : ObservableObject
             Title = "Select Python Interpreter"
         };
 
-        if (openFileDialog.ShowDialog() == true && SelectedScriptProfile != null)
+        if (openFileDialog.ShowDialog() == true)
         {
+            // --- CORRECTED LOGIC ---
+            // 1. Always update the main "Current Configuration" property.
             PythonInterpreterPath = openFileDialog.FileName;
-            SelectedScriptProfile.PythonInterpreterPath = openFileDialog.FileName;
+            CheckForVirtualEnvironment(PythonInterpreterPath);
+
+            // 2. (UX Improvement) Deselect the current profile to indicate a custom configuration.
+            // This makes it clear that the current settings no longer match any saved profile.
+            SelectedScriptProfile = null;
         }
     }
-
 
     /// <summary>
     /// Command to clear the input data text.
