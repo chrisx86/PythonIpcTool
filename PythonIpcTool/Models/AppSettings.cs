@@ -8,6 +8,14 @@ namespace PythonIpcTool.Models;
 /// </summary>
 public class AppSettings
 {
+    // The list of all saved script profiles
+    [JsonPropertyName("scriptProfiles")]
+    public List<ScriptProfile> ScriptProfiles { get; set; } = new();
+
+    // The ID of the last selected profile
+    [JsonPropertyName("lastSelectedProfileId")]
+    public Guid? LastSelectedProfileId { get; set; }
+
     [JsonPropertyName("isDarkMode")]
     public bool IsDarkMode { get; set; } = false; // Default to light mode
     /// <summary>

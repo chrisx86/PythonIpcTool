@@ -19,26 +19,26 @@ namespace PythonIpcTool.ViewModels;
 /// </summary>
 public partial class MainViewModel : ObservableObject
 {
-    private CancellationTokenSource? _cancellationSource;
     private readonly IConfigurationService? _configurationService;
     // Field is now nullable to accommodate design-time instance where it will be null.
     private IPythonProcessCommunicator? _activeCommunicator;
+    private ScriptProfile? _oldSelectedProfile;
+    private bool _isInitialized = false;
+    private CancellationTokenSource? _cancellationSource;
 
-    // Properties for Python interpreter and script paths
+    public ObservableCollection<ScriptProfile> ScriptProfiles { get; } = new();
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))]
-    private string _pythonInterpreterPath = string.Empty;
-    partial void OnPythonInterpreterPathChanged(string value) => SaveCurrentSettings();
+    [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))] // 當切換 Profile 時重新檢查按鈕狀態
+    private ScriptProfile? _selectedScriptProfile;
 
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))]
-    private string _pythonScriptPath = string.Empty;
+
+
+    private bool CanRemoveProfile() => SelectedScriptProfile != null;
 
     // Property for user input data
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))]
     private string _inputData = "{\"value\": \"Hello from C#\", \"numbers\": [1, 2, 3]}";
-    partial void OnPythonScriptPathChanged(string value) => SaveCurrentSettings();
 
     // Property for displaying Python script's output
     [ObservableProperty]
@@ -54,11 +54,54 @@ public partial class MainViewModel : ObservableObject
     private bool _isProcessing;
 
     // Property for selecting IPC mode
-    [ObservableProperty]
-    private IpcMode _selectedIpcMode = IpcMode.StandardIO;
-    partial void OnSelectedIpcModeChanged(IpcMode value) => SaveCurrentSettings();
+    //[ObservableProperty]
+    //private IpcMode _selectedIpcMode = IpcMode.StandardIO;
+    //partial void OnSelectedIpcModeChanged(IpcMode value) => UpdateSelectedProfilePaths();
 
     public ObservableCollection<LogEntry> LogEntries { get; } = new ObservableCollection<LogEntry>();
+
+    // --- NEW: Property for Virtual Environment Status ---
+    [ObservableProperty]
+    private string _virtualEnvStatusMessage = string.Empty;
+
+    [ObservableProperty]
+    private bool _isVirtualEnvDetected = false;
+
+    // --- NEW: Commands for Profile Management ---
+    [RelayCommand]
+    private void AddNewProfile()
+    {
+        var newProfile = new ScriptProfile();
+        ScriptProfiles.Add(newProfile);
+        SelectedScriptProfile = newProfile;
+    }
+
+    [RelayCommand(CanExecute = nameof(CanRemoveProfile))]
+    private void RemoveSelectedProfile()
+    {
+        if (SelectedScriptProfile != null)
+        {
+            int selectedIndex = ScriptProfiles.IndexOf(SelectedScriptProfile);
+            ScriptProfiles.Remove(SelectedScriptProfile);
+
+            // Select the next item in the list, or the last one if the removed item was the last.
+            if (ScriptProfiles.Any())
+            {
+                SelectedScriptProfile = ScriptProfiles[Math.Min(selectedIndex, ScriptProfiles.Count - 1)];
+            }
+            else
+            {
+                SelectedScriptProfile = null;
+            }
+        }
+    }
+
+    // This event handler is triggered when a property *inside* the selected profile changes
+    private void SelectedProfile_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        // Save settings whenever the name, path, or IPC mode of the selected profile is edited.
+        SaveCurrentSettings();
+    }
 
     /// <summary>
     /// Initializes a new instance of the MainViewModel class for the XAML designer.
@@ -89,11 +132,33 @@ public partial class MainViewModel : ObservableObject
     public MainViewModel(IConfigurationService configurationService)
     {
         _configurationService = configurationService ?? throw new ArgumentNullException(nameof(configurationService));
-        App.LogEvents.CollectionChanged += OnLogEvent;
-        // Load settings at startup
-        LoadInitialSettings();
 
-        Log.Information("[INFO] Application started. Ready for input.");
+        ScriptProfiles = new ObservableCollection<ScriptProfile>();
+        LoadInitialSettings();
+        _isInitialized = true;
+
+        // --- NEW: Subscribe to property changes within the selected profile ---
+        // This allows us to save automatically when the user edits the current profile's details.
+        PropertyChanged += (s, e) =>
+        {
+            if (e.PropertyName == nameof(SelectedScriptProfile))
+            {
+                SaveCurrentSettings(); // Save when the profile selection changes
+
+                if (_oldSelectedProfile != null)
+                {
+                    _oldSelectedProfile.PropertyChanged -= SelectedProfile_PropertyChanged;
+                }
+
+                if (SelectedScriptProfile != null)
+                {
+                    SelectedScriptProfile.PropertyChanged += SelectedProfile_PropertyChanged;
+                }
+                _oldSelectedProfile = SelectedScriptProfile;
+            }
+        };
+
+        Logs.Add("[INFO] Application started. Ready for input.");
     }
 
     private void OnLogEvent(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
@@ -137,18 +202,23 @@ public partial class MainViewModel : ObservableObject
     private void LoadInitialSettings()
     {
         var settings = _configurationService.LoadSettings();
-
-        // If loaded script path is empty, provide a sensible default relative path
-        string scriptPath = settings.PythonScriptPath;
-        if (string.IsNullOrWhiteSpace(scriptPath))
+        if (settings.ScriptProfiles.Any())
         {
-            scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "PythonScripts", "simple_processor.py");
+            foreach (var profile in settings.ScriptProfiles)
+            {
+                // `ScriptProfiles` is now a valid, initialized collection here.
+                ScriptProfiles.Add(profile);
+
+            }
+            // `SelectedScriptProfile` is assigned here, using the now-populated `ScriptProfiles`.
+            SelectedScriptProfile = ScriptProfiles.FirstOrDefault(p => p.Id == settings.LastSelectedProfileId) ?? ScriptProfiles.First();
+        }
+        else
+        {
+            AddNewProfile();
         }
 
-        // Apply loaded settings to the ViewModel properties
-        PythonInterpreterPath = settings.PythonInterpreterPath;
-        PythonScriptPath = scriptPath;
-        SelectedIpcMode = settings.LastUsedIpcMode;
+        // Dark mode is a global setting, so it's loaded here
         IsDarkMode = settings.IsDarkMode;
         ThemeManager.Current.ChangeTheme(Application.Current, IsDarkMode ? "Dark.Blue" : "Light.Blue");
     }
@@ -158,14 +228,16 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     private void SaveCurrentSettings()
     {
+        if (!_isInitialized) return; // Exit if the ViewModel is not fully initialized yet.
+
         var settings = new AppSettings
         {
-            PythonInterpreterPath = this.PythonInterpreterPath,
-            PythonScriptPath = this.PythonScriptPath,
-            LastUsedIpcMode = this.SelectedIpcMode,
+            ScriptProfiles = this.ScriptProfiles.ToList(),
+            LastSelectedProfileId = this.SelectedScriptProfile?.Id,
             IsDarkMode = this.IsDarkMode
         };
         _configurationService.SaveSettings(settings);
+        Log.Debug("Settings saved.");
     }
 
     // --- Commands ---
@@ -173,6 +245,7 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanExecutePythonScript))]
     private async Task ExecutePythonScriptAsync()
     {
+        if (SelectedScriptProfile == null) return;
         try
         {
             JsonDocument.Parse(InputData);
@@ -187,30 +260,34 @@ public partial class MainViewModel : ObservableObject
         IsProcessing = true;
         //OutputResult = "";
         Logs.Clear();
-        Log.Information($"[INFO] Starting Python script in {SelectedIpcMode} mode...");
+        Log.Information($"[INFO] Starting Python script in {SelectedScriptProfile.SelectedIpcMode} mode...");
 
         _cancellationSource = new CancellationTokenSource();
-        IPythonProcessCommunicator? localCommunicator = null;
 
         // --- MODIFICATION START: Dynamic Communicator Creation ---
         try
         {
-            localCommunicator = SelectedIpcMode switch
+            IPythonProcessCommunicator communicator = SelectedScriptProfile.SelectedIpcMode switch
             {
                 IpcMode.StandardIO => new StandardIOProcessCommunicator(),
                 IpcMode.LocalSocket => new LocalSocketProcessCommunicator(),
-                _ => throw new NotImplementedException($"IPC mode '{SelectedIpcMode}' is not implemented.")
+                // The default case now throws a very specific exception.
+                _ => throw new InvalidOperationException($"IPC mode '{SelectedScriptProfile.SelectedIpcMode}' is not supported.")
             };
-
-            _activeCommunicator = localCommunicator;
+            _activeCommunicator = communicator;
             // Subscribe to its events
             _activeCommunicator.OutputReceived += OnOutputReceived;
             _activeCommunicator.ErrorReceived += OnErrorReceived;
             _activeCommunicator.ProcessExited += OnProcessExited;
 
+            await _activeCommunicator.StartProcessAsync(
+                SelectedScriptProfile.PythonInterpreterPath,
+                SelectedScriptProfile.PythonScriptPath,
+                SelectedScriptProfile.SelectedIpcMode, // 使用 Profile 中的模式
+                _cancellationSource.Token);
+
             // Now, start the process using the newly created communicator
-            await _activeCommunicator.StartProcessAsync(PythonInterpreterPath, PythonScriptPath, SelectedIpcMode, _cancellationSource.Token);
-            Log.Information($"[INFO] Python process started: {Path.GetFileName(PythonInterpreterPath)}");
+            Log.Information($"[INFO] Python process started: {Path.GetFileName(SelectedScriptProfile.PythonInterpreterPath)}");
             // IMPORTANT: Check for cancellation *before* sending the message.
             // This prevents the "SendMessageAsync was canceled" warning in normal exit scenarios.
             if (_cancellationSource.IsCancellationRequested)
@@ -218,8 +295,11 @@ public partial class MainViewModel : ObservableObject
                 IsProcessing = false;
                 throw new OperationCanceledException();
             }
-            await _activeCommunicator.SendMessageAsync(InputData, _cancellationSource.Token);
-            Log.Information($"[INFO] Input sent to Python script: {InputData}");
+            else
+            {
+                await _activeCommunicator.SendMessageAsync(InputData, _cancellationSource.Token);
+                Log.Information($"[INFO] Input sent to Python script: {InputData}");
+            }
         }
         // --- MODIFICATION: More specific exception handling ---
         catch (OperationCanceledException)
@@ -305,31 +385,13 @@ public partial class MainViewModel : ObservableObject
 
     private bool CanExecutePythonScript()
     {
-        return !string.IsNullOrWhiteSpace(PythonInterpreterPath) &&
-               File.Exists(PythonInterpreterPath) && // Check if the interpreter file exists
-               !string.IsNullOrWhiteSpace(PythonScriptPath) &&
-               File.Exists(PythonScriptPath) && // Check if the script file exists
-               !string.IsNullOrWhiteSpace(InputData) &&
+        if (SelectedScriptProfile == null) return false;
+
+        return !string.IsNullOrWhiteSpace(SelectedScriptProfile.PythonInterpreterPath) &&
+               File.Exists(SelectedScriptProfile.PythonInterpreterPath) &&
+               !string.IsNullOrWhiteSpace(SelectedScriptProfile.PythonScriptPath) &&
+               File.Exists(SelectedScriptProfile.PythonScriptPath) &&
                !IsProcessing;
-    }
-
-    /// <summary>
-    /// Command to browse for the Python interpreter executable.
-    /// This method is wrapped into 'BrowsePythonInterpreterCommand' by the source generator.
-    /// </summary>
-    [RelayCommand]
-    private void BrowsePythonInterpreter()
-    {
-        var openFileDialog = new Microsoft.Win32.OpenFileDialog
-        {
-            Filter = "Python Executable|python.exe;pythonw.exe|All Files (*.*)|*.*",
-            Title = "Select Python Interpreter"
-        };
-
-        if (openFileDialog.ShowDialog() == true)
-        {
-            PythonInterpreterPath = openFileDialog.FileName;
-        }
     }
 
     /// <summary>
@@ -345,9 +407,9 @@ public partial class MainViewModel : ObservableObject
             Title = "Select Python Script"
         };
 
-        if (openFileDialog.ShowDialog() == true)
+        if (openFileDialog.ShowDialog() == true && SelectedScriptProfile != null)
         {
-            PythonScriptPath = openFileDialog.FileName;
+            SelectedScriptProfile.PythonScriptPath = openFileDialog.FileName;
         }
     }
 
@@ -397,6 +459,70 @@ public partial class MainViewModel : ObservableObject
             Log.Information($"[ERROR] {error}");
             IsProcessing = false;
         });
+    }
+
+
+    [RelayCommand]
+    private void BrowsePythonInterpreter()
+    {
+        var openFileDialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Filter = "Python Executable|python.exe;pythonw.exe|All Files (*.*)|*.*",
+            Title = "Select Python Interpreter"
+        };
+
+        if (openFileDialog.ShowDialog() == true && SelectedScriptProfile != null)
+        {
+            SelectedScriptProfile.PythonInterpreterPath = openFileDialog.FileName;
+        }
+    }
+
+    // --- NEW: Helper method for detection ---
+    /// <summary>
+    /// Checks if the provided Python interpreter path is inside a standard virtual environment.
+    /// Updates UI properties based on the result.
+    /// </summary>
+    private void CheckForVirtualEnvironment(string interpreterPath)
+    {
+        if (string.IsNullOrWhiteSpace(interpreterPath) || !File.Exists(interpreterPath))
+        {
+            VirtualEnvStatusMessage = string.Empty;
+            IsVirtualEnvDetected = false;
+            return;
+        }
+
+        try
+        {
+            var interpreterDir = Path.GetDirectoryName(interpreterPath);
+            if (interpreterDir == null) return;
+
+            // Standard venv check (looks for pyvenv.cfg in the parent directory)
+            var venvRootDir = Directory.GetParent(interpreterDir);
+            if (venvRootDir != null && File.Exists(Path.Combine(venvRootDir.FullName, "pyvenv.cfg")))
+            {
+                VirtualEnvStatusMessage = $"Virtual Environment Detected: {venvRootDir.Name}";
+                IsVirtualEnvDetected = true;
+                return;
+            }
+
+            // Conda env check (looks for 'conda-meta' directory in the parent of the parent)
+            if (venvRootDir?.Parent != null && Directory.Exists(Path.Combine(venvRootDir.Parent.FullName, "conda-meta")))
+            {
+                VirtualEnvStatusMessage = $"Conda Environment Detected: {venvRootDir.Parent.Name}";
+                IsVirtualEnvDetected = true;
+                return;
+            }
+
+            // If no specific environment is found, clear the message.
+            VirtualEnvStatusMessage = "No virtual environment detected (using global Python?).";
+            IsVirtualEnvDetected = false;
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Failed to check for virtual environment.");
+            VirtualEnvStatusMessage = "Could not determine environment status.";
+            IsVirtualEnvDetected = false;
+        }
     }
 
 }

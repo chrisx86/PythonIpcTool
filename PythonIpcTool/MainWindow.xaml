@@ -22,6 +22,8 @@
         <!-- Define all converters in a central place for clarity -->
         <ResourceDictionary>
             <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+            <converters:StringNullOrEmptyToVisibilityConverter x:Key="StringNullOrEmptyToVisibilityConverter"/>
+            <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
             <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter"/>
             <converters:EnumToBooleanConverter x:Key="EnumToBooleanConverter"/>
             <converters:LogLevelToBrushConverter x:Key="LogLevelToBrushConverter"/>
@@ -90,55 +92,75 @@
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
-                    <!-- Configuration -->
+                    <!-- Profile Selection Area -->
                     <RowDefinition Height="*"/>
                     <!-- Input Data -->
                 </Grid.RowDefinitions>
-
-                <!-- Configuration GroupBox -->
-                <GroupBox Grid.Row="0">
+                <GroupBox Grid.Row="0" Margin="0,0,10,10">
                     <GroupBox.Header>
                         <StackPanel Orientation="Horizontal">
-                            <iconPacks:PackIconMaterial Kind="Cogs" VerticalAlignment="Center" Margin="0 0 5 0"/>
-                            <TextBlock Text="Configuration" FontWeight="Bold"/>
+                            <iconPacks:PackIconMaterial Kind="Cog" VerticalAlignment="Center" Margin="0 0 5 0"/>
+                            <TextBlock Text="Configuration Profile" FontWeight="Bold"/>
                         </StackPanel>
                     </GroupBox.Header>
+
                     <StackPanel Margin="5">
-                        <TextBlock Text="Python Interpreter Path:" Margin="0 5 0 2"/>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBox Grid.Column="0" Text="{Binding PythonInterpreterPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                     Controls:TextBoxHelper.Watermark="e.g., C:\Python\python.exe or 'python' if in PATH"
-                                     Controls:TextBoxHelper.ClearTextButton="True"/>
-                            <Button Grid.Column="1" Content="Browse..." Command="{Binding BrowsePythonInterpreterCommand}" Margin="5 0 0 0"/>
-                        </Grid>
+                        <!-- 1. Profile 選擇與管理區域 -->
+                        <DockPanel Margin="0,0,0,15">
+                            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                                <Button Command="{Binding AddNewProfileCommand}" ToolTip="Add New Profile" Margin="5,0,0,0" Padding="8,5">
+                                    <iconPacks:PackIconMaterial Kind="Plus"/>
+                                </Button>
+                                <Button Command="{Binding RemoveSelectedProfileCommand}" ToolTip="Remove Selected Profile" Margin="5,0,0,0" Padding="8,5">
+                                    <iconPacks:PackIconMaterial Kind="Minus"/>
+                                </Button>
+                            </StackPanel>
+                            <ComboBox ItemsSource="{Binding ScriptProfiles}"
+                              SelectedItem="{Binding SelectedScriptProfile, Mode=TwoWay}"
+                              DisplayMemberPath="Name" 
+                              ToolTip="Select a configuration profile"/>
+                        </DockPanel>
 
-                        <TextBlock Text="Python Script Path:" Margin="0 10 0 2"/>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBox Grid.Column="0" Text="{Binding PythonScriptPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                     Controls:TextBoxHelper.Watermark="e.g., C:\Scripts\my_script.py"
-                                     Controls:TextBoxHelper.ClearTextButton="True"/>
-                            <Button Grid.Column="1" Content="Browse..." Command="{Binding BrowsePythonScriptCommand}" Margin="5 0 0 0"/>
-                        </Grid>
+                        <!-- 分隔線，讓視覺更清晰 -->
+                        <Separator Margin="0,0,0,15"/>
 
-                        <TextBlock Text="IPC Communication Mode:" Margin="0 10 0 5"/>
-                        <StackPanel Orientation="Horizontal">
-                            <RadioButton GroupName="IpcMode" Content="Standard I/O"
-                                         IsChecked="{Binding SelectedIpcMode, Mode=TwoWay, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:IpcMode.StandardIO}}"
-                                         Margin="0 0 15 0"/>
-                            <RadioButton GroupName="IpcMode" Content="Local Socket"
-                                         IsChecked="{Binding SelectedIpcMode, Mode=TwoWay, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:IpcMode.LocalSocket}}"/>
+                        <!-- 2. Profile 詳細設定區域 (綁定到 SelectedScriptProfile 的屬性) -->
+                        <!-- 只有當有選中 Profile 時才顯示此區域，避免 NullReference -->
+                        <StackPanel DataContext="{Binding SelectedScriptProfile}" 
+                            Visibility="{Binding Converter={StaticResource NullToVisibilityConverter}}">
+                            <!-- 這裡假設您有一個 NullToVisibilityConverter -->
+
+                            <TextBlock Text="Profile Name:" FontWeight="SemiBold"/>
+                            <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Margin="0,5,0,15"/>
+
+                            <TextBlock Text="Python Interpreter Path:" FontWeight="SemiBold"/>
+                            <DockPanel Margin="0,5,0,15">
+                                <!-- 注意：這裡的 Command 綁定可能需要調整，因為 DataContext 變了。
+                     可以使用 RelativeSource 綁定回 MainViewModel -->
+                                <Button DockPanel.Dock="Right" Content="Browse..." Margin="5,0,0,0"
+                                    Command="{Binding DataContext.BrowsePythonInterpreterCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                <TextBox Text="{Binding PythonInterpreterPath, UpdateSourceTrigger=PropertyChanged}"/>
+                            </DockPanel>
+
+                            <TextBlock Text="Python Script Path:" FontWeight="SemiBold"/>
+                            <DockPanel Margin="0,5,0,15">
+                                <Button DockPanel.Dock="Right" Content="Browse..." Margin="5,0,0,0"
+                                    Command="{Binding DataContext.BrowsePythonScriptCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                <TextBox Text="{Binding PythonScriptPath, UpdateSourceTrigger=PropertyChanged}"/>
+                            </DockPanel>
+
+                            <!-- 將原本在上面的 IPC Mode 移到這裡 -->
+                            <TextBlock Text="IPC Communication Mode:" FontWeight="SemiBold"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                                <RadioButton GroupName="IpcMode" Content="Standard I/O" Margin="0,0,15,0"
+                                    IsChecked="{Binding SelectedIpcMode, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:IpcMode.StandardIO}}"/>
+                                <RadioButton GroupName="IpcMode" Content="Local Socket"
+                                    IsChecked="{Binding SelectedIpcMode, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:IpcMode.LocalSocket}}"/>
+                            </StackPanel>
                         </StackPanel>
+
                     </StackPanel>
                 </GroupBox>
-
                 <!-- Input Data GroupBox -->
                 <GroupBox Grid.Row="1" Margin="0 10 0 0">
                     <GroupBox.Header>
@@ -152,7 +174,10 @@
                              FontFamily="Consolas, Cascadia Mono, Courier New"
                              Controls:TextBoxHelper.Watermark="Enter JSON data for Python script here..."/>
                 </GroupBox>
+
             </Grid>
+            
+            
         </DockPanel>
 
         <!-- =================================================================== -->
@@ -301,6 +326,8 @@
                 </Grid>
             </GroupBox>
         </Grid>
+        
+        
     </Grid>
 
 </Controls:MetroWindow>
