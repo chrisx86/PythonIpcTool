@@ -1,6 +1,7 @@
 ﻿using System.IO;
 using System.Text.Json;
 using PythonIpcTool.Models;
+using Serilog;
 
 namespace PythonIpcTool.Services;
 
@@ -18,21 +19,21 @@ public class JsonConfigurationService : IConfigurationService
 
     public AppSettings LoadSettings()
     {
-        //try
-        //{
-        //    if (File.Exists(SettingsFilePath))
-        //    {
-        //        string json = File.ReadAllText(SettingsFilePath);
-        //        // Attempt to deserialize. If file is corrupt or empty, return default.
-        //        return JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
-        //    }
-        //}
-        //catch (Exception ex)
-        //{
-        //    // Log the error if loading fails (e.g., file corruption, permission issues)
-        //    // For now, we'll just fall back to default settings.
-        //    Console.WriteLine($"Error loading settings: {ex.Message}");
-        //}
+        try
+        {
+            if (File.Exists(SettingsFilePath))
+            {
+                string json = File.ReadAllText(SettingsFilePath);
+                // Attempt to deserialize. If file is corrupt or empty, return default.
+                return JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+            }
+        }
+        catch (Exception ex)
+        {
+            // Log the error if loading fails (e.g., file corruption, permission issues)
+            // For now, we'll just fall back to default settings.
+            Log.Error($"Error loading settings: {ex.Message}");
+        }
 
         // If file doesn't exist or loading failed, return a new instance with default values.
         return new AppSettings();
@@ -53,7 +54,7 @@ public class JsonConfigurationService : IConfigurationService
         {
             // Log the error if saving fails.
             // The application should still function, but settings won't be saved.
-            Console.WriteLine($"Error saving settings: {ex.Message}");
+            Log.Error($"Error saving settings: {ex.Message}");
         }
     }
 }

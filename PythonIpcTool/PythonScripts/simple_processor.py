@@ -1,5 +1,4 @@
-﻿# File: PythonIpcTool/PythonScripts/simple_processor.py
-import sys
+﻿import sys
 import json
 import socket
 import time

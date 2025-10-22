@@ -1,17 +1,15 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
-using System.Collections.ObjectModel;
+﻿using System.IO;
 using System.Windows; // Required for DependencyObject
+using System.Text.Json;
+using System.ComponentModel;
+using System.Collections.ObjectModel;
+using ControlzEx.Theming;
 using PythonIpcTool.Models;
 using PythonIpcTool.Services;
-using System.IO;
-using System.ComponentModel;
-using MahApps.Metro.Controls;
-using MahApps.Metro.IconPacks;
-using ControlzEx.Theming;
+using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.ComponentModel;
 using Serilog.Events;
 using Serilog;
-using System.Text.Json;
 
 namespace PythonIpcTool.ViewModels;
 
@@ -60,8 +58,6 @@ public partial class MainViewModel : ObservableObject
     partial void OnSelectedIpcModeChanged(IpcMode value) => SaveCurrentSettings();
 
     public ObservableCollection<LogEntry> LogEntries { get; } = new ObservableCollection<LogEntry>();
-
-
 
     /// <summary>
     /// Initializes a new instance of the MainViewModel class for the XAML designer.
@@ -212,12 +208,14 @@ public partial class MainViewModel : ObservableObject
             Log.Warning("Execution was canceled by the user.");
             // CRITICAL FIX: The cancellation block MUST clean up its own state.
             // It cannot rely on the OnProcessExited event, which may not fire predictably.
+            _cancellationSource?.Cancel();
             IsProcessing = false;
             StopPythonProcess(); // Ensure all resources are released immediately.
         }
         catch (Exception ex)
         {
             Log.Error("Execution was canceled by the user.");
+            _cancellationSource?.Cancel();
             StopPythonProcess();
             IsProcessing = false;
         }
@@ -231,7 +229,6 @@ public partial class MainViewModel : ObservableObject
     }
     private bool CanCancelExecution() => IsProcessing;
 
-    // NEW: Add a command to stop the process, which is good for window closing event
     [RelayCommand]
     private void StopPythonProcess()
     {
@@ -239,12 +236,12 @@ public partial class MainViewModel : ObservableObject
         CleanUpCommunicator();
         if (_cancellationSource != null)
         {
+            _cancellationSource?.Cancel();
             _cancellationSource.Dispose();
             _cancellationSource = null;
         }
     }
 
-    // NEW: Helper method for cleanup to avoid code duplication
     private void CleanUpCommunicator()
     {
         if (_activeCommunicator != null)
@@ -268,9 +265,9 @@ public partial class MainViewModel : ObservableObject
             // No need to call StopProcess here anymore, as the process has already exited.
             // The cleanup should happen after we are sure we are done with the communicator instance.
             // Let's call the cleanup helper.
-            CleanUpCommunicator();
             StopPythonProcess();
             ExecutePythonScriptCommand.NotifyCanExecuteChanged();
+            CancelExecutionCommand.NotifyCanExecuteChanged();
         });
     }
 
