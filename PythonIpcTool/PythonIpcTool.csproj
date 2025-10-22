@@ -19,6 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Folder Include="Interfaces\" />
     <Folder Include="Resources\" />
     <Folder Include="Utils\" />
   </ItemGroup>
