@@ -416,3 +416,49 @@
 *   一個具有現代外觀的基礎 UI，並已準備好進行進一步的 MVVM 綁定和功能開發。
 
 接下來，我們就可以進入 **階段 1：核心 IPC 服務與資料模型 (Standard I/O)** 的實作，著手編寫實際的 IPC 邏輯了！
+
+
+使用者點擊 "Execute Script":
+ExecutePythonScriptAsync 開始執行。
+IsProcessing 設為 true。理論上 ProgressRing 應該會顯示。
+_activeCommunicator 被創建並啟動了 Python 進程。
+await _activeCommunicator.SendMessageAsync(...) 被呼叫，此時 ExecutePythonScriptAsync 方法會將控制權交還給 UI 執行緒，等待非同步操作完成。
+到目前為止一切正常，UI 應該是流暢的。
+Python 腳本完成工作:
+Python 腳本處理完數據，將結果寫入 stdout，然後正常退出。
+Python 進程的退出觸發了 _pythonProcess.Exited 事件。
+OnProcessExited 事件被觸發 (災難的開始):
+MainViewModel 中的 OnProcessExited 方法在一個背景執行緒上被呼叫。
+方法的第一行是 App.Current.Dispatcher.Invoke(() => { ... });。
+這行程式碼的意思是：「嘿，UI 執行緒，請暫停你正在做的一切，立即執行我傳遞給你的這段程式碼。」
+UI 執行緒上的致命操作:
+UI 執行緒接收到請求，開始執行 Invoke 中的程式碼塊。
+Log.Information(...) - OK
+IsProcessing = false; - OK
+StopPythonProcess(); -> CleanUpCommunicator() -> _activeCommunicator.StopProcess() -> _pythonProcess.Kill(true);
+Kill() 方法雖然是非阻塞的，但它仍然需要與作業系統進行互動來終結一個進程。在某些情況下，特別是如果該進程正在被作業系統鎖定或處於某種中間狀態，這個呼叫可能會產生短暫的同步延遲。
+更嚴重的是，如果 StopProcess 中仍然殘留了任何形式的同步等待（例如 WaitForExit），那麼死鎖就發生了：
+背景執行緒上的 Exited 事件正在等待 UI 執行緒完成 Invoke。
+UI 執行緒正在 Invoke 內部執行 StopProcess，而 StopProcess 又在同步等待背景進程（也就是觸發 Exited 事件的那個進程）的某些狀態。
+兩者互相等待，應用程式完全卡死。 這完美地解釋了為什麼 ProgressRing 的動畫會凍結——因為 UI 執行緒被阻塞了。
+為何出現 SendMessageAsync was canceled. 警告:
+當 StopPythonProcess() 在 UI 執行緒上被呼叫時，它會 Dispose() _cancellationSource。
+這個取消信號會傳播到 ExecutePythonScriptAsync 方法中那個還在 await _activeCommunicator.SendMessageAsync(...) 的「等待點」。
+SendMessageAsync 的等待被中斷，拋出一個 OperationCanceledException。
+ExecutePythonScriptAsync 的 catch (OperationCanceledException) 區塊被觸發，記錄下 "Execution was canceled..." 的警告。
+這看起來就像是使用者手動取消了操作，但實際上是程式碼的清理邏輯「從未來攻擊了過去」，提前取消了一個正在進行中的操作。
+為何最終還能收到 success 結果:
+因為 Python 腳本在它退出之前，就已經把 success 的結果發送到了 stdout。
+StandardIOProcessCommunicator 中的 ReadStreamAsync 背景任務在進程退出之前就已經收到了這個結果，並觸發了 OnOutputReceived 事件。
+所以，你看到的 success 結果是真實的，但它是在整個死鎖和混亂的清理流程發生之前就已經收到了。
+解決方案
+核心思想是：絕對不要在 Dispatcher.Invoke() 這種同步等待的區塊內執行任何可能耗時或與背景執行緒有潛在依賴的操作。 清理工作應該儘可能在背景執行緒完成。
+
+分離 UI 更新和背景清理:
+在 OnProcessExited 中，我們現在只將絕對必要且快速的 UI 狀態更新（如 IsProcessing = false）放到 Dispatcher.Invoke() 中。
+而可能耗時的清理操作 StopPythonProcess() 則被放到了 Task.Run() 中，確保它在一個背景執行緒上執行，完全不會阻塞 UI 執行緒。
+避免不必要的取消警告:
+在 ExecutePythonScriptAsync 中，OnProcessExited 可能會在 SendMessageAsync 還在 await 時觸發 StopPythonProcess，進而取消 _cancellationSource。
+雖然現在清理是異步的，但為了讓日誌更乾淨，我們可以在 SendMessageAsync 之前添加一個 if (_cancellationSource.IsCancellationRequested) 檢查。但在這個新的非阻塞模型中，這個問題的發生機率大大降低，因為 StopPythonProcess 不再阻塞，整個流程更快。最主要的是，catch (OperationCanceledException) 區塊現在只負責重置 UI 狀態，因為真正的清理會由 OnProcessExited 事件觸發。
+
+

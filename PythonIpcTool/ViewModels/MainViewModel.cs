@@ -211,30 +211,34 @@ public partial class MainViewModel : ObservableObject
             // Now, start the process using the newly created communicator
             await _activeCommunicator.StartProcessAsync(PythonInterpreterPath, PythonScriptPath, SelectedIpcMode, _cancellationSource.Token);
             Log.Information($"[INFO] Python process started: {Path.GetFileName(PythonInterpreterPath)}");
-
+            // IMPORTANT: Check for cancellation *before* sending the message.
+            // This prevents the "SendMessageAsync was canceled" warning in normal exit scenarios.
+            if (_cancellationSource.IsCancellationRequested)
+            {
+                IsProcessing = false;
+                throw new OperationCanceledException();
+            }
             await _activeCommunicator.SendMessageAsync(InputData, _cancellationSource.Token);
-            Log.Information($"[INFO] Input sent: {InputData}");
+            Log.Information($"[INFO] Input sent to Python script: {InputData}");
         }
         // --- MODIFICATION: More specific exception handling ---
         catch (OperationCanceledException)
         {
             Log.Warning("Execution was canceled by the user.");
+            IsProcessing = false;
         }
         catch (PythonProcessException ex)
         {
             // Catch our specific exception for detailed logging
             Log.Error(ex, "A problem occurred with the Python process.");
+            IsProcessing = false;
         }
         catch (Exception ex)
         {
             // Catch any other unexpected exceptions
             Log.Error(ex, "An unexpected error occurred during Python script execution.");
-        }
-        // --- NEW: Finally block for guaranteed cleanup ---
-        finally
-        {
             IsProcessing = false;
-            StopPythonProcess(); // This will clean up the communicator and cancellation source
+            StopPythonProcess(); // Clean up if setup fails
         }
     }
 
@@ -275,16 +279,27 @@ public partial class MainViewModel : ObservableObject
 
     private void OnProcessExited(int exitCode)
     {
+        Log.Information("Python process exited with code: {ExitCode}", exitCode);
+        // --- REVISED LOGIC ---
+        // Perform cleanup operations on a background thread to avoid blocking the UI.
+        // Task.Run is a simple way to ensure this.
+        Task.Run(() =>
+        {
+            // This is the cleanup logic that was causing the deadlock/slowness.
+            // It's now safely on a background thread.
+            StopPythonProcess();
+        });
+
+        // Dispatch ONLY the necessary UI updates to the UI thread.
+        // These operations are guaranteed to be fast.
         App.Current.Dispatcher.Invoke(() =>
         {
-            Log.Information($"[INFO] Python process exited with code: {exitCode}");
-            IsProcessing = false;
-            // No need to call StopProcess here anymore, as the process has already exited.
-            // The cleanup should happen after we are sure we are done with the communicator instance.
-            // Let's call the cleanup helper.
-            StopPythonProcess();
-            ExecutePythonScriptCommand.NotifyCanExecuteChanged();
-            CancelExecutionCommand.NotifyCanExecuteChanged();
+            if (IsProcessing) // Check if we are still in a processing state
+            {
+                IsProcessing = false;
+                ExecutePythonScriptCommand.NotifyCanExecuteChanged();
+                CancelExecutionCommand.NotifyCanExecuteChanged();
+            }
         });
     }
 
