@@ -1,12 +1,9 @@
-﻿using System;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
-using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using PythonIpcTool.Models;
+using PythonIpcTool.Exceptions;
 using Serilog;
 
 namespace PythonIpcTool.Services;
@@ -56,7 +53,7 @@ public class LocalSocketProcessCommunicator : IPythonProcessCommunicator
         try
         {
             bool started = _pythonProcess.Start();
-            if (!started) throw new InvalidOperationException($"Failed to start Python process.");
+            if (!started) throw new PythonProcessException("The OS failed to start the Python process.");
 
             cancellationToken.ThrowIfCancellationRequested();
             // USAGE: Use the internal CancellationToken for background reading tasks
@@ -68,7 +65,8 @@ public class LocalSocketProcessCommunicator : IPythonProcessCommunicator
 
             if (_pythonProcess.HasExited)
             {
-                throw new InvalidOperationException($"Python process exited immediately with code {_pythonProcess.ExitCode}.");
+                throw new PythonProcessException("Python script did not connect to the socket within the timeout period.");
+                //throw new InvalidOperationException($"Python process exited immediately with code {_pythonProcess.ExitCode}.");
             }
         }
         catch (OperationCanceledException)
@@ -77,10 +75,11 @@ public class LocalSocketProcessCommunicator : IPythonProcessCommunicator
             StopProcess();
             throw;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Log.Error(ex, "Failed to write to Python process standard input.");
             StopProcess();
-            throw;
+            throw new PythonProcessException($"Failed to start or connect socket process: {ex.Message}", ex);
         }
     }
 

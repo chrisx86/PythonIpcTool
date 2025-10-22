@@ -4,6 +4,7 @@ using System.Collections.ObjectModel; // REQUIRED for ObservableCollection
 using System.Windows;
 using Serilog.Sinks.Observable;       // REQUIRED for the .ObservableCollection() extension method
 using Serilog.Sinks.ObservableCollection;
+using System.Windows.Threading;
 namespace PythonIpcTool;
 public partial class App : Application
 {
@@ -13,12 +14,12 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // --- Serilog Configuration ---
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Debug()
             .WriteTo.File("logs/app_log_.txt",
                           rollingInterval: RollingInterval.Day,
                           outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
-
             // Using the correct property name 'MaxStoredEvents' as defined in your project's version of the library.
             .WriteTo.Sink(
                 new ObservableCollectionSink(
@@ -38,22 +39,45 @@ public partial class App : Application
 
         Log.Information("Application Starting Up...");
 
-        // Setup global exception handling
+        // --- NEW: Global Exception Handling ---
+        SetupGlobalExceptionHandling();
+    }
+
+    private void SetupGlobalExceptionHandling()
+    {
+        // Catch exceptions from the UI thread
         this.DispatcherUnhandledException += App_DispatcherUnhandledException;
+
+        // Catch exceptions from background tasks
         TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
+    }
+
+    private void App_DispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
+    {
+        // Log the unhandled exception
+        Log.Fatal(e.Exception, "An unhandled exception occurred on the UI thread.");
+
+        // Show a friendly message to the user
+        MessageBox.Show(
+            $"An unexpected error occurred. The application might need to close.\n\nPlease check the logs for more details.\n\nError: {e.Exception.Message}",
+            "Unhandled Error",
+            MessageBoxButton.OK,
+            MessageBoxImage.Error);
+
+        // Prevent the application from crashing
+        e.Handled = true;
+
+        // Optionally, you might want to gracefully shutdown
+        // Current.Shutdown();
     }
 
     private void TaskScheduler_UnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
     {
+        // Log the unobserved task exception
         Log.Fatal(e.Exception, "An unobserved task exception occurred.");
-        // Optionally, show a message to the user
-    }
 
-    private void App_DispatcherUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
-    {
-        Log.Fatal(e.Exception, "An unhandled UI exception occurred.");
-        // Prevent the application from crashing
-        e.Handled = true;
+        // Set the exception as observed to prevent the process from terminating
+        e.SetObserved();
     }
 
     protected override void OnExit(ExitEventArgs e)

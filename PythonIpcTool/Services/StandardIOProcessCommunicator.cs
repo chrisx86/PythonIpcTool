@@ -5,6 +5,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using PythonIpcTool.Exceptions;
 using PythonIpcTool.Models;
 using Serilog; // Ensure this namespace is correct for IpcMode
 
@@ -122,7 +123,7 @@ public class StandardIOProcessCommunicator : IPythonProcessCommunicator
         catch (Exception ex)
         {
             Log.Error(ex, "Failed to write to Python process standard input.");
-            throw;
+            throw new PythonProcessException($"Failed to start or connect socket process: {ex.Message}", ex);
         }
     }
 
@@ -149,6 +150,7 @@ public class StandardIOProcessCommunicator : IPythonProcessCommunicator
             catch (Exception ex)
             {
                 Log.Error(ex, "Error while stopping Python process.");
+                throw new PythonProcessException($"Failed to while stopping Python process: {ex.Message}", ex);
             }
         }
 

@@ -10,6 +10,7 @@ using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Serilog.Events;
 using Serilog;
+using PythonIpcTool.Exceptions;
 
 namespace PythonIpcTool.ViewModels;
 
@@ -172,6 +173,17 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanExecutePythonScript))]
     private async Task ExecutePythonScriptAsync()
     {
+        try
+        {
+            JsonDocument.Parse(InputData);
+        }
+        catch (JsonException ex)
+        {
+            Log.Error(ex, "Invalid JSON format in input data.");
+            // Optionally show a message box to the user here
+            MessageBox.Show($"The input data is not a valid JSON.\n\nDetails: {ex.Message}", "Invalid Input", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return; // Stop execution
+        }
         IsProcessing = true;
         //OutputResult = "";
         Logs.Clear();
@@ -203,21 +215,26 @@ public partial class MainViewModel : ObservableObject
             await _activeCommunicator.SendMessageAsync(InputData, _cancellationSource.Token);
             Log.Information($"[INFO] Input sent: {InputData}");
         }
+        // --- MODIFICATION: More specific exception handling ---
         catch (OperationCanceledException)
         {
             Log.Warning("Execution was canceled by the user.");
-            // CRITICAL FIX: The cancellation block MUST clean up its own state.
-            // It cannot rely on the OnProcessExited event, which may not fire predictably.
-            _cancellationSource?.Cancel();
-            IsProcessing = false;
-            StopPythonProcess(); // Ensure all resources are released immediately.
+        }
+        catch (PythonProcessException ex)
+        {
+            // Catch our specific exception for detailed logging
+            Log.Error(ex, "A problem occurred with the Python process.");
         }
         catch (Exception ex)
         {
-            Log.Error("Execution was canceled by the user.");
-            _cancellationSource?.Cancel();
-            StopPythonProcess();
+            // Catch any other unexpected exceptions
+            Log.Error(ex, "An unexpected error occurred during Python script execution.");
+        }
+        // --- NEW: Finally block for guaranteed cleanup ---
+        finally
+        {
             IsProcessing = false;
+            StopPythonProcess(); // This will clean up the communicator and cancellation source
         }
     }
 
@@ -274,7 +291,9 @@ public partial class MainViewModel : ObservableObject
     private bool CanExecutePythonScript()
     {
         return !string.IsNullOrWhiteSpace(PythonInterpreterPath) &&
+               File.Exists(PythonInterpreterPath) && // Check if the interpreter file exists
                !string.IsNullOrWhiteSpace(PythonScriptPath) &&
+               File.Exists(PythonScriptPath) && // Check if the script file exists
                !string.IsNullOrWhiteSpace(InputData) &&
                !IsProcessing;
     }

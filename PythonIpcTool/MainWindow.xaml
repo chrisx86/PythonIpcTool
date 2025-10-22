@@ -9,6 +9,7 @@
                       xmlns:converters="clr-namespace:PythonIpcTool.Converters"
                       xmlns:Controls="clr-namespace:MahApps.Metro.Controls;assembly=MahApps.Metro"
                       xmlns:iconPacks="http://metro.mahapps.com/winfx/xaml/iconpacks"
+                      xmlns:sys="clr-namespace:System;assembly=mscorlib"
                       mc:Ignorable="d"
                       Title="Python IPC Tool"
                       Height="720" Width="1200"
@@ -175,11 +176,45 @@
                         <TextBlock Text="Output Data from Python" FontWeight="Bold"/>
                     </StackPanel>
                 </GroupBox.Header>
-                <TextBox Text="{Binding OutputResult, Mode=OneWay}"
-                         AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                <!-- Use a Grid to overlay the TextBox and the Watermark TextBlock -->
+                <Grid>
+                    <!-- The main TextBox for displaying the output -->
+                    <TextBox Text="{Binding OutputResult, Mode=OneWay}"
+                         AcceptsReturn="True" 
+                         TextWrapping="Wrap" 
+                         VerticalScrollBarVisibility="Auto"
                          IsReadOnly="True"
                          FontFamily="Consolas, Cascadia Mono, Courier New"
-                         Controls:TextBoxHelper.Watermark="Output from Python script will appear here..."/>
+                         Background="Transparent" 
+                         BorderThickness="0"/>
+
+                    <!-- 
+                        NEW: Watermark for empty output.
+                        This TextBlock sits on top of the TextBox and is only visible when OutputResult is null or empty.
+                    -->
+                    <TextBlock Text="Output from Python script will appear here..."
+                       Foreground="{DynamicResource MahApps.Brushes.Gray5}"
+                       IsHitTestVisible="False"
+                       VerticalAlignment="Center" 
+                       HorizontalAlignment="Center"
+                       FontSize="14">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource MahApps.Styles.TextBlock}">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <!-- Trigger to show the watermark when the bound property is an empty string -->
+                                    <DataTrigger Binding="{Binding OutputResult}" Value="{x:Static sys:String.Empty}">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                    <!-- Trigger to show the watermark when the bound property is null -->
+                                    <DataTrigger Binding="{Binding OutputResult}" Value="{x:Null}">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Grid>
             </GroupBox>
 
             <!-- Grid Splitter for resizing -->
@@ -194,35 +229,76 @@
                         <TextBlock Text="Status &amp; Log" FontWeight="Bold"/>
                     </StackPanel>
                 </GroupBox.Header>
-                <ListView ItemsSource="{Binding LogEntries}"
-                          VirtualizingPanel.IsVirtualizing="True" 
-                          VirtualizingPanel.VirtualizationMode="Recycling"
-                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                          BorderThickness="0"
-                          Background="Transparent"
-                          SelectionMode="Extended"
-                          local:ScrollViewerExtensions.AutoScrollToEnd="True">
 
-                    <ListView.View>
-                        <GridView AllowsColumnReorder="False">
-                            <GridViewColumn Header="Timestamp" Width="120"
-                                            DisplayMemberBinding="{Binding Timestamp, StringFormat='HH:mm:ss.fff'}"/>
-                            <GridViewColumn Header="Level" Width="90">
-                                <GridViewColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <Border CornerRadius="3" Padding="5,2" Margin="2"
-                                                Background="{Binding Level, Converter={StaticResource LogLevelToBrushConverter}}">
-                                            <TextBlock Text="{Binding Level}" FontWeight="Bold" Foreground="White"
-                                                       HorizontalAlignment="Center"/>
-                                        </Border>
-                                    </DataTemplate>
-                                </GridViewColumn.CellTemplate>
-                            </GridViewColumn>
-                            <GridViewColumn Header="Message" Width="500" 
-                                            DisplayMemberBinding="{Binding Message}"/>
-                        </GridView>
-                    </ListView.View>
-                </ListView>
+                <!-- Use a Grid to overlay the ListView and the Watermark TextBlock -->
+                <Grid>
+                    <!-- The main ListView for displaying log entries -->
+                    <ListView ItemsSource="{Binding LogEntries}"
+                      VirtualizingPanel.IsVirtualizing="True" 
+                      VirtualizingPanel.VirtualizationMode="Recycling"
+                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                      BorderThickness="0"
+                      Background="Transparent"
+                      SelectionMode="Extended"
+                      local:ScrollViewerExtensions.AutoScrollToEnd="True">
+
+                        <!-- Hide the ListView completely when there are no items, -->
+                        <!-- so the Watermark is clearly visible without any ListView artifacts like headers. -->
+                        <ListView.Style>
+                            <Style TargetType="ListView" BasedOn="{StaticResource MahApps.Styles.ListView}">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding LogEntries.Count}" Value="0">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ListView.Style>
+
+                        <ListView.View>
+                            <GridView AllowsColumnReorder="False">
+                                <GridViewColumn Header="Timestamp" Width="120"
+                                    DisplayMemberBinding="{Binding Timestamp, StringFormat='HH:mm:ss.fff'}"/>
+                                <GridViewColumn Header="Level" Width="90">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Border CornerRadius="3" Padding="5,2" Margin="2"
+                                        Background="{Binding Level, Converter={StaticResource LogLevelToBrushConverter}}">
+                                                <TextBlock Text="{Binding Level}" FontWeight="Bold" Foreground="White"
+                                               HorizontalAlignment="Center"/>
+                                            </Border>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="Message" Width="500" 
+                                    DisplayMemberBinding="{Binding Message}"/>
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+
+                    <!-- 
+                        NEW: Watermark for empty log.
+                        This TextBlock is only visible when the LogEntries collection is empty.
+                    -->
+                    <TextBlock Text="Logs will appear here..."
+                       Foreground="{DynamicResource MahApps.Brushes.Gray5}"
+                       IsHitTestVisible="False"
+                       VerticalAlignment="Center" 
+                       HorizontalAlignment="Center"
+                       FontSize="14">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource MahApps.Styles.TextBlock}">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <!-- Trigger to show the watermark when the collection's Count is 0 -->
+                                    <DataTrigger Binding="{Binding LogEntries.Count}" Value="0">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Grid>
             </GroupBox>
         </Grid>
     </Grid>
