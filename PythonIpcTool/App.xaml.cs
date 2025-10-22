@@ -8,18 +8,18 @@ using System.Windows.Threading;
 namespace PythonIpcTool;
 public partial class App : Application
 {
+    //public static ObservableCollection<LogEvent> LogEvents { get; } = new ObservableCollection<LogEvent>();
+    //public static ObservableSink LogEventsSink { get; } = new ObservableSink();
+    //public static IObservable<LogEvent> LogEvents { get; }
     public static ObservableCollection<LogEvent> LogEvents { get; } = new ObservableCollection<LogEvent>();
-
-    protected override void OnStartup(StartupEventArgs e)
+    static App()
     {
-        base.OnStartup(e);
-
-        // --- Serilog Configuration ---
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Debug()
             .WriteTo.File("logs/app_log_.txt",
                           rollingInterval: RollingInterval.Day,
                           outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
+
             // Using the correct property name 'MaxStoredEvents' as defined in your project's version of the library.
             .WriteTo.Sink(
                 new ObservableCollectionSink(
@@ -36,10 +36,12 @@ public partial class App : Application
                 ),
                 restrictedToMinimumLevel: LogEventLevel.Information)
             .CreateLogger();
+    }
 
+    protected override void OnStartup(StartupEventArgs e)
+    {
+        base.OnStartup(e);
         Log.Information("Application Starting Up...");
-
-        // --- NEW: Global Exception Handling ---
         SetupGlobalExceptionHandling();
     }
 

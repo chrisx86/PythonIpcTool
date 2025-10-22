@@ -2,10 +2,7 @@
 using PythonIpcTool.Services;
 using PythonIpcTool.ViewModels;
 using System.ComponentModel; // Required for CancelEventArgs
-using Serilog.Events;
-using System.Globalization;
-using System.Windows.Data;
-using System.Windows.Media;
+using MahApps.Metro.Controls.Dialogs;
 
 namespace PythonIpcTool.Views;
 
@@ -18,12 +15,13 @@ public partial class MainWindow : MetroWindow
     {
         InitializeComponent();
 
-        // Instantiate MainViewModel and set it as the DataContext for this window.
         IConfigurationService configService = new JsonConfigurationService();
-        this.DataContext = new MainViewModel(configService);
 
-        // Register the Closing event to ensure proper resource cleanup.
+        // 我們同時提供了 configService 和 DialogCoordinator.Instance
+        DataContext = new MainViewModel(configService, DialogCoordinator.Instance);
+
         this.Closing += MainWindow_Closing;
+        this.Closed += MainWindow_Closed;
     }
 
     /// <summary>
@@ -35,6 +33,15 @@ public partial class MainWindow : MetroWindow
         {
             // MODIFICATION: Call the new StopPythonProcessCommand
             viewModel.StopPythonProcessCommand.Execute(null);
+        }
+    }
+
+    private void MainWindow_Closed(object? sender, EventArgs e)
+    {
+        // When the window is fully closed, dispose of the ViewModel's resources.
+        if (this.DataContext is IDisposable disposable)
+        {
+            disposable.Dispose();
         }
     }
 }

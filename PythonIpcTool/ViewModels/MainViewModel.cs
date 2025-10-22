@@ -8,9 +8,11 @@ using PythonIpcTool.Models;
 using PythonIpcTool.Services;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
-using Serilog.Events;
 using Serilog;
+using Serilog.Events;
 using PythonIpcTool.Exceptions;
+using MahApps.Metro.Controls.Dialogs;
+using CommunityToolkit.Mvvm.Input; // Ensure this is present for AsyncRelayCommand
 
 namespace PythonIpcTool.ViewModels;
 
@@ -19,7 +21,9 @@ namespace PythonIpcTool.ViewModels;
 /// </summary>
 public partial class MainViewModel : ObservableObject
 {
+    private readonly IDisposable _logSubscription;
     private readonly IConfigurationService? _configurationService;
+    private readonly IDialogCoordinator _dialogCoordinator;
     // Field is now nullable to accommodate design-time instance where it will be null.
     private IPythonProcessCommunicator? _activeCommunicator;
     private ScriptProfile? _oldSelectedProfile;
@@ -31,14 +35,21 @@ public partial class MainViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))] // 當切換 Profile 時重新檢查按鈕狀態
     private ScriptProfile? _selectedScriptProfile;
 
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))]
+    private string _pythonInterpreterPath = "python";
 
-
-    private bool CanRemoveProfile() => SelectedScriptProfile != null;
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))]
+    private string _pythonScriptPath = "";
 
     // Property for user input data
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))]
     private string _inputData = "{\"value\": \"Hello from C#\", \"numbers\": [1, 2, 3]}";
+
+    [ObservableProperty]
+    private IpcMode _selectedIpcMode = IpcMode.StandardIO;
 
     // Property for displaying Python script's output
     [ObservableProperty]
@@ -58,7 +69,7 @@ public partial class MainViewModel : ObservableObject
     //private IpcMode _selectedIpcMode = IpcMode.StandardIO;
     //partial void OnSelectedIpcModeChanged(IpcMode value) => UpdateSelectedProfilePaths();
 
-    public ObservableCollection<LogEntry> LogEntries { get; } = new ObservableCollection<LogEntry>();
+    public ObservableCollection<LogEntry> LogEntries { get; } = new ();
 
     // --- NEW: Property for Virtual Environment Status ---
     [ObservableProperty]
@@ -67,7 +78,140 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private bool _isVirtualEnvDetected = false;
 
+    /// <summary>
+    /// Initializes a new instance of the MainViewModel class for the XAML designer.
+    /// This constructor is called only when the ViewModel is created in a design tool.
+    /// </summary>
+    public MainViewModel()
+    {
+        if (DesignerProperties.GetIsInDesignMode(new DependencyObject()))
+        {
+            // We are in design mode, use a mock/design service.
+            _configurationService = new DesignConfigurationService();
+            LoadInitialSettings();
+            PopulateDesignTimeData();
+        }
+        else
+        {
+            // This path should ideally not be taken in a production app with DI.
+            // It's a fallback. The constructor with IConfigurationService is preferred.
+            // If you use a DI container, this constructor might not even be needed.
+        }
+    }
+
+    /// <summary>
+    /// This parameterless constructor is for the XAML designer ONLY.
+    /// It populates the ViewModel with sample data for design-time visualization.
+    /// It does NOT perform any runtime logic or service instantiation.
+    /// </summary>
+    public MainViewModel(IConfigurationService configurationService, IDialogCoordinator dialogCoordinator)
+    {
+        _configurationService = configurationService ?? throw new ArgumentNullException(nameof(configurationService));
+        _dialogCoordinator = dialogCoordinator ?? throw new ArgumentNullException(nameof(dialogCoordinator));
+        ScriptProfiles = new ObservableCollection<ScriptProfile>();
+        App.LogEvents.CollectionChanged += OnLogEvent;
+        LoadInitialSettings();
+        _isInitialized = true;
+
+        // --- NEW: Subscribe to property changes within the selected profile ---
+        // This allows us to save automatically when the user edits the current profile's details.
+        PropertyChanged += (s, e) =>
+        {
+            if (e.PropertyName == nameof(SelectedScriptProfile))
+            {
+                SaveCurrentSettings(); // Save when the profile selection changes
+
+                if (_oldSelectedProfile != null)
+                {
+                    _oldSelectedProfile.PropertyChanged -= SelectedProfile_PropertyChanged;
+                }
+
+                if (SelectedScriptProfile != null)
+                {
+                    SelectedScriptProfile.PropertyChanged += SelectedProfile_PropertyChanged;
+                }
+                _oldSelectedProfile = SelectedScriptProfile;
+            }
+        };
+
+        Log.Information("Application started. Ready for input.");
+    }
+
+    // --- NEW: Implement IDisposable to clean up the subscription ---
+    /// <summary>
+    /// Cleans up resources, particularly the log event subscription.
+    /// </summary>
+    public void Dispose()
+    {
+        // This method should be called when the ViewModel is no longer needed.
+        // For the main window, this can be called in the Window_Closed event.
+        _logSubscription.Dispose();
+        StopPythonProcess(); // Ensure any running process is also stopped.
+        GC.SuppressFinalize(this);
+    }
+
+
     // --- NEW: Commands for Profile Management ---
+    // This partial method is now the key to loading a profile into the workspace.
+    partial void OnSelectedScriptProfileChanged(ScriptProfile? value)
+    {
+        if (value != null)
+        {
+            // Load the selected profile's data into the current workspace.
+            PythonInterpreterPath = value.PythonInterpreterPath;
+            PythonScriptPath = value.PythonScriptPath;
+            SelectedIpcMode = value.SelectedIpcMode;
+            Log.Information("Loaded profile: {ProfileName}", value.Name);
+        }
+        // Save the fact that this profile was the last one selected.
+        SaveAppSettings();
+    }
+
+    private void SaveAppSettings()
+    {
+        // This is a simplified save method that doesn't save the whole profile list on every change.
+        // It's assumed you have a more intelligent save trigger now (e.g., on exit, or when profiles change).
+        if (!_isInitialized) return;
+
+        var settings = new AppSettings
+        {
+            ScriptProfiles = this.ScriptProfiles.ToList(),
+            LastSelectedProfileId = this.SelectedScriptProfile?.Id,
+            IsDarkMode = this.IsDarkMode
+        };
+        _configurationService.SaveSettings(settings);
+    }
+
+    [RelayCommand]
+    private async Task SaveCurrentAsProfileAsync()
+    {
+        var settings = new MetroDialogSettings
+        {
+            AffirmativeButtonText = "Save",
+            NegativeButtonText = "Cancel",
+            DefaultText = $"Profile {ScriptProfiles.Count + 1}"
+        };
+
+        string? profileName = await _dialogCoordinator.ShowInputAsync(this, "Save Profile", "Enter a name for the new profile:", settings);
+
+        if (string.IsNullOrWhiteSpace(profileName))
+        {
+            Log.Information("Saving new profile was canceled by the user.");
+            return;
+        }
+
+        var newProfile = new ScriptProfile
+        {
+            Name = profileName,
+            PythonInterpreterPath = this.PythonInterpreterPath,
+            PythonScriptPath = this.PythonScriptPath,
+            SelectedIpcMode = this.SelectedIpcMode
+        };
+        ScriptProfiles.Add(newProfile);
+        SelectedScriptProfile = newProfile; // Select the newly created profile
+        Log.Information("New profile '{ProfileName}' saved successfully.", profileName);
+    }
+
     [RelayCommand]
     private void AddNewProfile()
     {
@@ -96,69 +240,13 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    private bool CanRemoveProfile() => SelectedScriptProfile != null;
+
     // This event handler is triggered when a property *inside* the selected profile changes
     private void SelectedProfile_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         // Save settings whenever the name, path, or IPC mode of the selected profile is edited.
         SaveCurrentSettings();
-    }
-
-    /// <summary>
-    /// Initializes a new instance of the MainViewModel class for the XAML designer.
-    /// This constructor is called only when the ViewModel is created in a design tool.
-    /// </summary>
-    public MainViewModel()
-    {
-        if (DesignerProperties.GetIsInDesignMode(new DependencyObject()))
-        {
-            // We are in design mode, use a mock/design service.
-            _configurationService = new DesignConfigurationService();
-            LoadInitialSettings();
-            PopulateDesignTimeData();
-        }
-        else
-        {
-            // This path should ideally not be taken in a production app with DI.
-            // It's a fallback. The constructor with IConfigurationService is preferred.
-            // If you use a DI container, this constructor might not even be needed.
-        }
-    }
-
-    /// <summary>
-    /// This parameterless constructor is for the XAML designer ONLY.
-    /// It populates the ViewModel with sample data for design-time visualization.
-    /// It does NOT perform any runtime logic or service instantiation.
-    /// </summary>
-    public MainViewModel(IConfigurationService configurationService)
-    {
-        _configurationService = configurationService ?? throw new ArgumentNullException(nameof(configurationService));
-
-        ScriptProfiles = new ObservableCollection<ScriptProfile>();
-        LoadInitialSettings();
-        _isInitialized = true;
-
-        // --- NEW: Subscribe to property changes within the selected profile ---
-        // This allows us to save automatically when the user edits the current profile's details.
-        PropertyChanged += (s, e) =>
-        {
-            if (e.PropertyName == nameof(SelectedScriptProfile))
-            {
-                SaveCurrentSettings(); // Save when the profile selection changes
-
-                if (_oldSelectedProfile != null)
-                {
-                    _oldSelectedProfile.PropertyChanged -= SelectedProfile_PropertyChanged;
-                }
-
-                if (SelectedScriptProfile != null)
-                {
-                    SelectedScriptProfile.PropertyChanged += SelectedProfile_PropertyChanged;
-                }
-                _oldSelectedProfile = SelectedScriptProfile;
-            }
-        };
-
-        Logs.Add("[INFO] Application started. Ready for input.");
     }
 
     private void OnLogEvent(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
@@ -206,16 +294,32 @@ public partial class MainViewModel : ObservableObject
         {
             foreach (var profile in settings.ScriptProfiles)
             {
-                // `ScriptProfiles` is now a valid, initialized collection here.
                 ScriptProfiles.Add(profile);
-
             }
-            // `SelectedScriptProfile` is assigned here, using the now-populated `ScriptProfiles`.
-            SelectedScriptProfile = ScriptProfiles.FirstOrDefault(p => p.Id == settings.LastSelectedProfileId) ?? ScriptProfiles.First();
+            // Load the last selected profile into the workspace, if it exists.
+            var lastProfile = ScriptProfiles.FirstOrDefault(p => p.Id == settings.LastSelectedProfileId);
+            if (lastProfile != null)
+            {
+                // Set the ComboBox selection WITHOUT triggering the full load logic initially
+                // to avoid double loading.
+                _selectedScriptProfile = lastProfile;
+                OnPropertyChanged(nameof(SelectedScriptProfile)); // Manually notify UI
+
+                // Then, explicitly load its data.
+                PythonInterpreterPath = lastProfile.PythonInterpreterPath;
+                PythonScriptPath = lastProfile.PythonScriptPath;
+                SelectedIpcMode = lastProfile.SelectedIpcMode;
+            }
+            else
+            {
+                // No last profile, just use defaults.
+                PythonScriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "PythonScripts", "simple_processor.py");
+            }
         }
         else
         {
-            AddNewProfile();
+            // First time running, use defaults. No profile is created automatically.
+            PythonScriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "PythonScripts", "simple_processor.py");
         }
 
         // Dark mode is a global setting, so it's loaded here
@@ -245,7 +349,6 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanExecutePythonScript))]
     private async Task ExecutePythonScriptAsync()
     {
-        if (SelectedScriptProfile == null) return;
         try
         {
             JsonDocument.Parse(InputData);
@@ -281,9 +384,9 @@ public partial class MainViewModel : ObservableObject
             _activeCommunicator.ProcessExited += OnProcessExited;
 
             await _activeCommunicator.StartProcessAsync(
-                SelectedScriptProfile.PythonInterpreterPath,
-                SelectedScriptProfile.PythonScriptPath,
-                SelectedScriptProfile.SelectedIpcMode, // 使用 Profile 中的模式
+                this.PythonInterpreterPath,
+                this.PythonScriptPath,
+                this.SelectedIpcMode,
                 _cancellationSource.Token);
 
             // Now, start the process using the newly created communicator
@@ -385,12 +488,10 @@ public partial class MainViewModel : ObservableObject
 
     private bool CanExecutePythonScript()
     {
-        if (SelectedScriptProfile == null) return false;
-
-        return !string.IsNullOrWhiteSpace(SelectedScriptProfile.PythonInterpreterPath) &&
-               File.Exists(SelectedScriptProfile.PythonInterpreterPath) &&
-               !string.IsNullOrWhiteSpace(SelectedScriptProfile.PythonScriptPath) &&
-               File.Exists(SelectedScriptProfile.PythonScriptPath) &&
+        return !string.IsNullOrWhiteSpace(PythonInterpreterPath) &&
+               File.Exists(PythonInterpreterPath) &&
+               !string.IsNullOrWhiteSpace(PythonScriptPath) &&
+               File.Exists(PythonScriptPath) &&
                !IsProcessing;
     }
 
@@ -409,9 +510,27 @@ public partial class MainViewModel : ObservableObject
 
         if (openFileDialog.ShowDialog() == true && SelectedScriptProfile != null)
         {
+            PythonScriptPath = PythonScriptPath;
             SelectedScriptProfile.PythonScriptPath = openFileDialog.FileName;
         }
     }
+
+    [RelayCommand]
+    private void BrowsePythonInterpreter()
+    {
+        var openFileDialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Filter = "Python Executable|python.exe;pythonw.exe|All Files (*.*)|*.*",
+            Title = "Select Python Interpreter"
+        };
+
+        if (openFileDialog.ShowDialog() == true && SelectedScriptProfile != null)
+        {
+            PythonInterpreterPath = openFileDialog.FileName;
+            SelectedScriptProfile.PythonInterpreterPath = openFileDialog.FileName;
+        }
+    }
+
 
     /// <summary>
     /// Command to clear the input data text.
@@ -462,20 +581,6 @@ public partial class MainViewModel : ObservableObject
     }
 
 
-    [RelayCommand]
-    private void BrowsePythonInterpreter()
-    {
-        var openFileDialog = new Microsoft.Win32.OpenFileDialog
-        {
-            Filter = "Python Executable|python.exe;pythonw.exe|All Files (*.*)|*.*",
-            Title = "Select Python Interpreter"
-        };
-
-        if (openFileDialog.ShowDialog() == true && SelectedScriptProfile != null)
-        {
-            SelectedScriptProfile.PythonInterpreterPath = openFileDialog.FileName;
-        }
-    }
 
     // --- NEW: Helper method for detection ---
     /// <summary>

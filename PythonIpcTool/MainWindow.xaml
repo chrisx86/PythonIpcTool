@@ -45,9 +45,9 @@
     <!-- Main Content Grid: Divides the window into two primary columns -->
     <Grid Margin="15">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="1.5*" MinWidth="400"/>
+            <ColumnDefinition Width="1.5*"/>
             <!-- Left Column for input and configuration -->
-            <ColumnDefinition Width="2*" MinWidth="450"/>
+            <ColumnDefinition Width="2*"/>
             <!-- Right Column for output and logs -->
         </Grid.ColumnDefinitions>
 
@@ -55,129 +55,163 @@
         <!-- LEFT COLUMN: Configuration and Input                              -->
         <!-- =================================================================== -->
         <DockPanel Grid.Column="0" Margin="0 0 10 0">
-            <!-- Action Buttons are docked to the bottom of the left column -->
+
+            <!-- Action Buttons are docked to the bottom of the left column. This is correct. -->
             <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0 15 0 0">
-                <Button Command="{Binding ClearInputCommand}">
+                <Button Command="{Binding ClearInputCommand}" ToolTip="Clear the Input Data text area">
                     <StackPanel Orientation="Horizontal">
                         <iconPacks:PackIconMaterial Kind="CloseCircleOutline" VerticalAlignment="Center" Margin="0 0 5 0"/>
                         <TextBlock Text="Clear Input"/>
                     </StackPanel>
                 </Button>
+
                 <!-- Cancel Button (Visible only when processing) -->
                 <Button Command="{Binding CancelExecutionCommand}"
-                        Visibility="{Binding IsProcessing, Converter={StaticResource BooleanToVisibilityConverter}}"
-                        Background="{DynamicResource MahApps.Brushes.Gray5}"
-                        Margin="10 0 0 0">
+                Visibility="{Binding IsProcessing, Converter={StaticResource BooleanToVisibilityConverter}}"
+                Background="{DynamicResource MahApps.Brushes.Gray5}"
+                Margin="10 0 0 0"
+                ToolTip="Cancel the current script execution">
                     <StackPanel Orientation="Horizontal">
                         <iconPacks:PackIconMaterial Kind="Cancel" VerticalAlignment="Center" Margin="0 0 5 0"/>
                         <TextBlock Text="Cancel"/>
                     </StackPanel>
                 </Button>
+
                 <!-- Execute Button (Visible only when NOT processing) -->
                 <Button Command="{Binding ExecutePythonScriptCommand}"
-                        Style="{DynamicResource MahApps.Styles.Button.Accent}"
-                        Visibility="{Binding IsProcessing, Converter={StaticResource InverseBooleanToVisibilityConverter}}"
-                        Margin="10 0 0 0">
+                Style="{DynamicResource MahApps.Styles.Button.Accent}"
+                Visibility="{Binding IsProcessing, Converter={StaticResource InverseBooleanToVisibilityConverter}}"
+                Background="{DynamicResource MahApps.Brushes.Gray5}"
+                        Margin="10 0 0 0"
+                ToolTip="Execute the Python script with the current configuration">
                     <StackPanel Orientation="Horizontal">
                         <iconPacks:PackIconMaterial Kind="Play" VerticalAlignment="Center" Margin="0 0 5 0"/>
                         <TextBlock Text="Execute Script"/>
                     </StackPanel>
                 </Button>
+
                 <!-- Busy Indicator -->
                 <Controls:ProgressRing IsActive="{Binding IsProcessing}" Width="20" Height="20" Margin="10 0 0 0"
-                                       Foreground="{DynamicResource MahApps.Brushes.Accent}"/>
+                               Foreground="{DynamicResource MahApps.Brushes.Accent}"/>
             </StackPanel>
 
-            <!-- Configuration and Input GroupBoxes fill the remaining space -->
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <!-- Profile Selection Area -->
-                    <RowDefinition Height="*"/>
-                    <!-- Input Data -->
-                </Grid.RowDefinitions>
-                <GroupBox Grid.Row="0" Margin="0,0,10,10">
-                    <GroupBox.Header>
-                        <StackPanel Orientation="Horizontal">
-                            <iconPacks:PackIconMaterial Kind="Cog" VerticalAlignment="Center" Margin="0 0 5 0"/>
-                            <TextBlock Text="Configuration Profile" FontWeight="Bold"/>
-                        </StackPanel>
-                    </GroupBox.Header>
+            <!-- 
+                MODIFIED: Use a ScrollViewer to handle cases where the window is too small.
+                The content (a StackPanel) will fill the remaining space of the DockPanel.
+            -->
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Orientation="Vertical">
 
-                    <StackPanel Margin="5">
-                        <!-- 1. Profile 選擇與管理區域 -->
-                        <DockPanel Margin="0,0,0,15">
-                            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
-                                <Button Command="{Binding AddNewProfileCommand}" ToolTip="Add New Profile" Margin="5,0,0,0" Padding="8,5">
-                                    <iconPacks:PackIconMaterial Kind="Plus"/>
-                                </Button>
-                                <Button Command="{Binding RemoveSelectedProfileCommand}" ToolTip="Remove Selected Profile" Margin="5,0,0,0" Padding="8,5">
-                                    <iconPacks:PackIconMaterial Kind="Minus"/>
-                                </Button>
+                    <!-- 1. Direct Execution Configuration -->
+                    <GroupBox Margin="0 0 0 10">
+                        <GroupBox.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <iconPacks:PackIconMaterial Kind="Flash" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                <TextBlock Text="Current Configuration" FontWeight="Bold"/>
                             </StackPanel>
-                            <ComboBox ItemsSource="{Binding ScriptProfiles}"
-                              SelectedItem="{Binding SelectedScriptProfile, Mode=TwoWay}"
-                              DisplayMemberPath="Name" 
-                              ToolTip="Select a configuration profile"/>
-                        </DockPanel>
-
-                        <!-- 分隔線，讓視覺更清晰 -->
-                        <Separator Margin="0,0,0,15"/>
-
-                        <!-- 2. Profile 詳細設定區域 (綁定到 SelectedScriptProfile 的屬性) -->
-                        <!-- 只有當有選中 Profile 時才顯示此區域，避免 NullReference -->
-                        <StackPanel DataContext="{Binding SelectedScriptProfile}" 
-                            Visibility="{Binding Converter={StaticResource NullToVisibilityConverter}}">
-                            <!-- 這裡假設您有一個 NullToVisibilityConverter -->
-
-                            <TextBlock Text="Profile Name:" FontWeight="SemiBold"/>
-                            <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Margin="0,5,0,15"/>
-
+                        </GroupBox.Header>
+                        <StackPanel Margin="5">
                             <TextBlock Text="Python Interpreter Path:" FontWeight="SemiBold"/>
-                            <DockPanel Margin="0,5,0,15">
-                                <!-- 注意：這裡的 Command 綁定可能需要調整，因為 DataContext 變了。
-                     可以使用 RelativeSource 綁定回 MainViewModel -->
-                                <Button DockPanel.Dock="Right" Content="Browse..." Margin="5,0,0,0"
-                                    Command="{Binding DataContext.BrowsePythonInterpreterCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                            <DockPanel Margin="0,5,0,5">
+                                <Button DockPanel.Dock="Right" Content="Browse..." Command="{Binding BrowsePythonInterpreterCommand}" Margin="5,0,0,0"/>
                                 <TextBox Text="{Binding PythonInterpreterPath, UpdateSourceTrigger=PropertyChanged}"/>
                             </DockPanel>
 
+                            <!-- Virtual Env Status Panel -->
+                            <!-- This panel as a whole is only visible when the VirtualEnvStatusMessage string is not null or empty. -->
+                            <StackPanel Orientation="Horizontal" Margin="0 2 0 10"
+                                Visibility="{Binding VirtualEnvStatusMessage, Converter={StaticResource StringNullOrEmptyToVisibilityConverter}}">
+
+                                <!-- 
+                                    Success Icon: A green checkmark.
+                                    Visible only when a virtual environment IS detected (IsVirtualEnvDetected = True).
+                                -->
+                                <iconPacks:PackIconMaterial Kind="CheckDecagram" 
+                                    VerticalAlignment="Center" 
+                                    Margin="0 0 5 0"
+                                    Foreground="ForestGreen"
+                                    ToolTip="A virtual environment was detected."
+                                    Visibility="{Binding IsVirtualEnvDetected, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+
+                                <!-- 
+                                    Warning Icon: An orange alert circle.
+                                    Visible only when a virtual environment IS NOT detected (IsVirtualEnvDetected = False).
+                                    We use the InverseBooleanToVisibilityConverter for this.
+                                -->
+                                <iconPacks:PackIconMaterial Kind="AlertCircleOutline" 
+                                    VerticalAlignment="Center" 
+                                    Margin="0 0 5 0"
+                                    Foreground="Orange"
+                                    ToolTip="No virtual environment detected. Using global Python installation is not recommended for production."
+                                    Visibility="{Binding IsVirtualEnvDetected, Converter={StaticResource InverseBooleanToVisibilityConverter}}"/>
+
+                                <!-- 
+                                    Status Message Text: Displays the text from the ViewModel.
+                                -->
+                                <TextBlock Text="{Binding VirtualEnvStatusMessage}"
+                                   FontStyle="Italic"
+                                   VerticalAlignment="Center"
+                                   Opacity="0.8"/>
+                            </StackPanel>
+                            
                             <TextBlock Text="Python Script Path:" FontWeight="SemiBold"/>
                             <DockPanel Margin="0,5,0,15">
-                                <Button DockPanel.Dock="Right" Content="Browse..." Margin="5,0,0,0"
-                                    Command="{Binding DataContext.BrowsePythonScriptCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                <Button DockPanel.Dock="Right" Content="Browse..." Command="{Binding BrowsePythonScriptCommand}" Margin="5,0,0,0"/>
                                 <TextBox Text="{Binding PythonScriptPath, UpdateSourceTrigger=PropertyChanged}"/>
                             </DockPanel>
 
-                            <!-- 將原本在上面的 IPC Mode 移到這裡 -->
                             <TextBlock Text="IPC Communication Mode:" FontWeight="SemiBold"/>
                             <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
                                 <RadioButton GroupName="IpcMode" Content="Standard I/O" Margin="0,0,15,0"
-                                    IsChecked="{Binding SelectedIpcMode, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:IpcMode.StandardIO}}"/>
+                                     IsChecked="{Binding SelectedIpcMode, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:IpcMode.StandardIO}}"/>
                                 <RadioButton GroupName="IpcMode" Content="Local Socket"
-                                    IsChecked="{Binding SelectedIpcMode, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:IpcMode.LocalSocket}}"/>
+                                     IsChecked="{Binding SelectedIpcMode, Converter={StaticResource EnumToBooleanConverter}, ConverterParameter={x:Static models:IpcMode.LocalSocket}}"/>
                             </StackPanel>
                         </StackPanel>
+                    </GroupBox>
 
-                    </StackPanel>
-                </GroupBox>
-                <!-- Input Data GroupBox -->
-                <GroupBox Grid.Row="1" Margin="0 10 0 0">
-                    <GroupBox.Header>
-                        <StackPanel Orientation="Horizontal">
-                            <iconPacks:PackIconMaterial Kind="CodeJson" VerticalAlignment="Center" Margin="0 0 5 0"/>
-                            <TextBlock Text="Input Data (JSON)" FontWeight="Bold"/>
-                        </StackPanel>
-                    </GroupBox.Header>
-                    <TextBox Text="{Binding InputData, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    <!-- 2. Saved Profiles Area -->
+                    <GroupBox Margin="0 0 0 10">
+                        <GroupBox.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <iconPacks:PackIconMaterial Kind="StarBoxMultiple" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                <TextBlock Text="Saved Profiles" FontWeight="Bold"/>
+                            </StackPanel>
+                        </GroupBox.Header>
+                        <DockPanel Margin="5">
+                            <Button DockPanel.Dock="Right" Command="{Binding SaveCurrentAsProfileCommand}" ToolTip="Save Current Configuration as a New Profile" Margin="5,0,0,0" Padding="8,5">
+                                <iconPacks:PackIconMaterial Kind="ContentSave"/>
+                            </Button>
+                            <Button DockPanel.Dock="Right" Command="{Binding RemoveSelectedProfileCommand}" ToolTip="Remove Selected Profile" Padding="8,5">
+                                <iconPacks:PackIconMaterial Kind="Minus"/>
+                            </Button>
+                            <ComboBox ItemsSource="{Binding ScriptProfiles}"
+                              SelectedItem="{Binding SelectedScriptProfile, Mode=TwoWay}"
+                              DisplayMemberPath="Name"
+                              Controls:TextBoxHelper.Watermark="Load a saved profile..."/>
+                        </DockPanel>
+                    </GroupBox>
+
+                    <!-- 3. Input Data GroupBox -->
+                    <GroupBox>
+                        <GroupBox.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <iconPacks:PackIconMaterial Kind="CodeJson" VerticalAlignment="Center" Margin="0 0 5 0"/>
+                                <TextBlock Text="Input Data (JSON)" FontWeight="Bold"/>
+                            </StackPanel>
+                        </GroupBox.Header>
+                        <!-- Use a Grid to allow the TextBox to stretch vertically -->
+                        <Grid>
+                            <TextBox Text="{Binding InputData, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                              AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                             MinHeight="100"
                              FontFamily="Consolas, Cascadia Mono, Courier New"
                              Controls:TextBoxHelper.Watermark="Enter JSON data for Python script here..."/>
-                </GroupBox>
+                        </Grid>
+                    </GroupBox>
 
-            </Grid>
-            
-            
+                </StackPanel>
+            </ScrollViewer>
         </DockPanel>
 
         <!-- =================================================================== -->

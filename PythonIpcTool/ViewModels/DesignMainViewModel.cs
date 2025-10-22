@@ -1,24 +1,18 @@
-﻿namespace PythonIpcTool.ViewModels;
+﻿using PythonIpcTool.Services; // 確保有這個 using
 
-/// <summary>
-/// This class provides design-time data for the MainWindow.
-/// It inherits from MainViewModel and leverages its design-time-aware constructor.
-/// </summary>
+namespace PythonIpcTool.ViewModels;
+
 public class DesignMainViewModel : MainViewModel
 {
     /// <summary>
     /// Initializes a new instance of the DesignMainViewModel class.
-    /// This constructor is safe to call from the XAML designer because it
-    /// calls the parameterless base constructor of MainViewModel, which handles
-    /// the design-time check and data population.
+    /// It provides design-time safe mock services to the base MainViewModel constructor.
     /// </summary>
-    public DesignMainViewModel() : base()
+    public DesignMainViewModel()
+        : base(new DesignConfigurationService(), new DesignDialogCoordinator()) // <-- 關鍵修正點
     {
-        // The base constructor has already populated the data for design time.
-        // You can leave this empty, or add/override more specific data if you want
-        // the design-time view to look different from the base MainViewModel's design mode.
-        // For example:
-        // Log.Information("[DESIGN] Specific data from DesignMainViewModel.");
+        // The base constructor is now called with the required mock dependencies.
+        // You can add more design-time specific data here if needed.
     }
 }
 
@@ -28,4 +22,4 @@ d:DesignInstance: 這是推薦的現代 WPF 設計時數據語法。IsDesignTime
 DesignConfigurationService 提供了獨立於檔案系統的假數據。
 DesignMainViewModel 作為一個清晰的入口點，供 XAML 設計器使用。
 你的 XAML 設計器（無論是 Visual Studio 還是 Blend）現在應該能正確地顯示預設的路徑、日誌、範例輸出，甚至可以看到 ProgressRing 因為 IsProcessing = true 而顯示出來，這對於調整 UI 佈局和樣式非常有幫助。
- */
+*/
