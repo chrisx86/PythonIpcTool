@@ -33,14 +33,17 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<ScriptProfile> ScriptProfiles { get; } = new();
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))] // 當切換 Profile 時重新檢查按鈕狀態
+    [NotifyCanExecuteChangedFor(nameof(RemoveSelectedProfileCommand))]
     private ScriptProfile? _selectedScriptProfile;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))]
-    private string _pythonInterpreterPath = "python";
+    [NotifyCanExecuteChangedFor(nameof(SaveOrUpdateProfileCommand))]
+    private string _pythonInterpreterPath = "python.exe";
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SaveOrUpdateProfileCommand))]
     private string _pythonScriptPath = "";
 
     // Property for user input data
@@ -150,7 +153,6 @@ public partial class MainViewModel : ObservableObject
         GC.SuppressFinalize(this);
     }
 
-
     // --- NEW: Commands for Profile Management ---
     // This partial method is now the key to loading a profile into the workspace.
     partial void OnSelectedScriptProfileChanged(ScriptProfile? value)
@@ -183,33 +185,63 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task SaveCurrentAsProfileAsync()
+    private async Task SaveOrUpdateProfileAsync()
     {
-        var settings = new MetroDialogSettings
+        // Case 1: A profile IS selected. We UPDATE it.
+        if (SelectedScriptProfile != null)
         {
-            AffirmativeButtonText = "Save",
-            NegativeButtonText = "Cancel",
-            DefaultText = $"Profile {ScriptProfiles.Count + 1}"
-        };
+            // Update the existing profile object with the values from the "Current Configuration"
+            SelectedScriptProfile.PythonInterpreterPath = this.PythonInterpreterPath;
+            SelectedScriptProfile.PythonScriptPath = this.PythonScriptPath;
+            SelectedScriptProfile.SelectedIpcMode = this.SelectedIpcMode;
 
-        string? profileName = await _dialogCoordinator.ShowInputAsync(this, "Save Profile", "Enter a name for the new profile:", settings);
+            // Note: The Name property is not updated here, as renaming should typically be a separate action.
+            // If you want to allow renaming, you would bind the Name TextBox to SelectedScriptProfile.Name directly.
 
-        if (string.IsNullOrWhiteSpace(profileName))
-        {
-            Log.Information("Saving new profile was canceled by the user.");
-            return;
+            Log.Information("Profile '{ProfileName}' has been updated.", SelectedScriptProfile.Name);
+
+            // Manually trigger a save of all settings.
+            SaveAppSettings();
         }
-
-        var newProfile = new ScriptProfile
+        // Case 2: NO profile is selected. We CREATE a new one.
+        else
         {
-            Name = profileName,
-            PythonInterpreterPath = this.PythonInterpreterPath,
-            PythonScriptPath = this.PythonScriptPath,
-            SelectedIpcMode = this.SelectedIpcMode
-        };
-        ScriptProfiles.Add(newProfile);
-        SelectedScriptProfile = newProfile; // Select the newly created profile
-        Log.Information("New profile '{ProfileName}' saved successfully.", profileName);
+            var settings = new MetroDialogSettings
+            {
+                AffirmativeButtonText = "Save",
+                NegativeButtonText = "Cancel",
+                DefaultText = $"Profile {ScriptProfiles.Count + 1}"
+            };
+
+            string? profileName = await _dialogCoordinator.ShowInputAsync(this, "Save New Profile", "Enter a name for the new profile:", settings);
+
+            if (string.IsNullOrWhiteSpace(profileName))
+            {
+                Log.Information("Saving new profile was canceled.");
+                return;
+            }
+
+            var newProfile = new ScriptProfile
+            {
+                Name = profileName,
+                PythonInterpreterPath = this.PythonInterpreterPath,
+                PythonScriptPath = this.PythonScriptPath,
+                SelectedIpcMode = this.SelectedIpcMode
+            };
+
+            ScriptProfiles.Add(newProfile);
+            SelectedScriptProfile = newProfile; // This automatically selects the new profile and triggers a save.
+            Log.Information("New profile '{ProfileName}' saved successfully.", profileName);
+        }
+    }
+
+    // --- NEW: CanExecute logic for the save button ---
+    private bool CanSaveOrUpdateProfile()
+    {
+        // The save button should be enabled as long as the current configuration paths are not empty.
+        // We don't need to check File.Exists here, as the user might be saving a profile for another machine.
+        return !string.IsNullOrWhiteSpace(PythonInterpreterPath) &&
+               !string.IsNullOrWhiteSpace(PythonScriptPath);
     }
 
     [RelayCommand]

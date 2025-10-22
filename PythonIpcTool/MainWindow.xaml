@@ -10,13 +10,15 @@
                       xmlns:Controls="clr-namespace:MahApps.Metro.Controls;assembly=MahApps.Metro"
                       xmlns:iconPacks="http://metro.mahapps.com/winfx/xaml/iconpacks"
                       xmlns:sys="clr-namespace:System;assembly=mscorlib"
+                      xmlns:Dialogs="clr-namespace:MahApps.Metro.Controls.Dialogs;assembly=MahApps.Metro"
                       mc:Ignorable="d"
                       Title="Python IPC Tool"
                       Height="720" Width="1200"
                       MinHeight="600" MinWidth="900"
                       WindowStartupLocation="CenterScreen"
                       d:DataContext="{d:DesignInstance Type=vm:DesignMainViewModel, IsDesignTimeCreatable=True}"
-                      GlowBrush="{DynamicResource MahApps.Brushes.Accent}">
+                      GlowBrush="{DynamicResource MahApps.Brushes.Accent}"
+                      Dialogs:DialogParticipation.Register="{Binding}">
 
     <Controls:MetroWindow.Resources>
         <!-- Define all converters in a central place for clarity -->
@@ -179,7 +181,7 @@
                             </StackPanel>
                         </GroupBox.Header>
                         <DockPanel Margin="5">
-                            <Button DockPanel.Dock="Right" Command="{Binding SaveCurrentAsProfileCommand}" ToolTip="Save Current Configuration as a New Profile" Margin="5,0,0,0" Padding="8,5">
+                            <Button DockPanel.Dock="Right" Command="{Binding SaveOrUpdateProfileCommand}" ToolTip="Save current configuration as a new profile" Margin="5,0,0,0" Padding="8,5">
                                 <iconPacks:PackIconMaterial Kind="ContentSave"/>
                             </Button>
                             <Button DockPanel.Dock="Right" Command="{Binding RemoveSelectedProfileCommand}" ToolTip="Remove Selected Profile" Padding="8,5">
