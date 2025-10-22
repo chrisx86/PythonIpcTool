@@ -12,7 +12,9 @@ using Serilog;
 using Serilog.Events;
 using PythonIpcTool.Exceptions;
 using MahApps.Metro.Controls.Dialogs;
-using CommunityToolkit.Mvvm.Input; // Ensure this is present for AsyncRelayCommand
+using CommunityToolkit.Mvvm.Input;
+using System.Text;
+using System.Collections; // Ensure this is present for AsyncRelayCommand
 
 namespace PythonIpcTool.ViewModels;
 
@@ -668,6 +670,31 @@ public partial class MainViewModel : ObservableObject
             Log.Warning(ex, "Failed to check for virtual environment.");
             VirtualEnvStatusMessage = "Could not determine environment status.";
             IsVirtualEnvDetected = false;
+        }
+    }
+
+    [RelayCommand]
+    private void CopySelectedLogs(object? selectedItems)
+    {
+        if (selectedItems is IList items && items.Count > 0)
+        {
+            var logEntries = items.OfType<LogEntry>();
+            var sb = new StringBuilder();
+            foreach (var log in logEntries)
+            {
+                sb.AppendLine($"[{log.Timestamp:HH:mm:ss.fff}] [{log.Level}] {log.Message}");
+            }
+
+            try
+            {
+                // SetText can sometimes fail if the clipboard is in use by another process.
+                Clipboard.SetText(sb.ToString());
+                Log.Information("Copied {Count} log entries to clipboard.", logEntries.Count());
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to copy logs to clipboard.");
+            }
         }
     }
 

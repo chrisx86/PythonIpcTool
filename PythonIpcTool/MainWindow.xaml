@@ -335,6 +335,17 @@
                                     DisplayMemberBinding="{Binding Message}"/>
                             </GridView>
                         </ListView.View>
+                        <ListView.ContextMenu>
+                            <ContextMenu>
+                                <!-- This is the MenuItem you need to add -->
+                                <MenuItem Header="Copy Selected Logs" 
+                              Command="{Binding CopySelectedLogsCommand}"
+                              CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ContextMenu}, Path=PlacementTarget.SelectedItems}"/>
+
+                                <!-- You can add more MenuItems here in the future, e.g., "Clear All Logs" -->
+                                <!-- <MenuItem Header="Clear All Logs" Command="{Binding ClearLogsCommand}"/> -->
+                            </ContextMenu>
+                        </ListView.ContextMenu>
                     </ListView>
 
                     <!-- 
