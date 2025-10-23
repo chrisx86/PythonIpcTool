@@ -10,10 +10,10 @@
 *   **情境描述：** 使用者想要快速了解一個大型 CSV 檔案的基本統計數據，而不想在 C# 中編寫複雜的 CSV 解析和計算邏輯。
 *   **C# WPF App (輸入)：** 使用者透過檔案瀏覽器選擇一個 CSV 檔案，並可選填一個特定的欄位名稱。
     ```json
-    {
-      "file_path": "C:\\data\\sales_records.csv",
-      "column_name": "Profit" 
-    }
+{
+    "file_path": "C:\\data\\sales_records.csv",
+    "column_name": "Profit" 
+}
     ```
 *   **Python 腳本 (處理)：** 使用強大的 `Pandas` 函式庫讀取 CSV，並呼叫 `.describe()` 方法來產生描述性統計。
 *   **Python 腳本 (輸出)：** 返回一個包含平均值、標準差、最大/最小值等統計數據的 JSON 物件。

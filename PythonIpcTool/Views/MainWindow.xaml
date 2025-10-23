@@ -81,11 +81,26 @@
 
                 <!-- Execute Button (Visible only when NOT processing) -->
                 <Button Command="{Binding ExecutePythonScriptCommand}"
-                Style="{DynamicResource MahApps.Styles.Button.Accent}"
-                Visibility="{Binding IsProcessing, Converter={StaticResource InverseBooleanToVisibilityConverter}}"
-                Background="{DynamicResource MahApps.Brushes.Gray5}"
-                        Margin="10 0 0 0"
-                ToolTip="Execute the Python script with the current configuration">
+                    Visibility="{Binding IsProcessing, Converter={StaticResource InverseBooleanToVisibilityConverter}}"
+                    Margin="10 0 0 0"
+                    ToolTip="Execute the Python script with the current configuration">
+                    <Button.Style>
+                        <!-- Create a custom style that inherits from the MahApps Accent style -->
+                        <Style TargetType="Button">
+                            <Style.Triggers>
+                                <Trigger Property="IsEnabled" Value="True">
+                                    <Setter Property="Background" Value="ForestGreen"/>
+                                    <Setter Property="BorderBrush" Value="DarkGreen"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Background" Value="LightGray"/>
+                                    <Setter Property="BorderBrush" Value="LightGray"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+
+                    <!-- The content of the button remains the same -->
                     <StackPanel Orientation="Horizontal">
                         <iconPacks:PackIconMaterial Kind="Play" VerticalAlignment="Center" Margin="0 0 5 0"/>
                         <TextBlock Text="Execute Script"/>
