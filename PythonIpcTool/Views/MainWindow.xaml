@@ -11,6 +11,7 @@
                       xmlns:iconPacks="http://metro.mahapps.com/winfx/xaml/iconpacks"
                       xmlns:sys="clr-namespace:System;assembly=mscorlib"
                       xmlns:Dialogs="clr-namespace:MahApps.Metro.Controls.Dialogs;assembly=MahApps.Metro"
+                      xmlns:extensions="clr-namespace:PythonIpcTool.Extensions"
                       mc:Ignorable="d"
                       Title="Python IPC Tool"
                       Height="720" Width="1200"
@@ -300,7 +301,8 @@
                          IsReadOnly="True"
                          FontFamily="Consolas, Cascadia Mono, Courier New"
                          Background="Transparent" 
-                         BorderThickness="0"/>
+                         BorderThickness="0"
+                         extensions:TextBoxExtensions.AutoScrollToEnd="True"/>
 
                     <!-- 
                         NEW: Watermark for empty output.
@@ -355,7 +357,7 @@
                       BorderThickness="0"
                       Background="Transparent"
                       SelectionMode="Extended"
-                      local:ScrollViewerExtensions.AutoScrollToEnd="True">
+                      extensions:ScrollViewerExtensions.AutoScrollToEnd="True">
 
                         <!-- Hide the ListView completely when there are no items, -->
                         <!-- so the Watermark is clearly visible without any ListView artifacts like headers. -->
