@@ -1,20 +1,19 @@
 ﻿using System.IO;
-using System.Windows; // Required for DependencyObject
+using System.Text;
 using System.Text.Json;
+using System.Windows; // Required for DependencyObject
+using System.Collections; // Ensure this is present for AsyncRelayCommand
 using System.ComponentModel;
 using System.Collections.ObjectModel;
 using ControlzEx.Theming;
 using PythonIpcTool.Models;
 using PythonIpcTool.Services;
+using PythonIpcTool.Exceptions;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Serilog;
 using Serilog.Events;
-using PythonIpcTool.Exceptions;
 using MahApps.Metro.Controls.Dialogs;
-using CommunityToolkit.Mvvm.Input;
-using System.Text;
-using System.Collections; // Ensure this is present for AsyncRelayCommand
 
 namespace PythonIpcTool.ViewModels;
 
@@ -165,6 +164,7 @@ public partial class MainViewModel : ObservableObject
             PythonInterpreterPath = value.PythonInterpreterPath;
             PythonScriptPath = value.PythonScriptPath;
             SelectedIpcMode = value.SelectedIpcMode;
+            InputData = value.InputData;
             Log.Information("Loaded profile: {ProfileName}", value.Name);
         }
         // Save the fact that this profile was the last one selected.
@@ -186,7 +186,7 @@ public partial class MainViewModel : ObservableObject
         _configurationService.SaveSettings(settings);
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanSaveOrUpdateProfile))]
     private async Task SaveOrUpdateProfileAsync()
     {
         // Case 1: A profile IS selected. We UPDATE it.
@@ -196,6 +196,7 @@ public partial class MainViewModel : ObservableObject
             SelectedScriptProfile.PythonInterpreterPath = this.PythonInterpreterPath;
             SelectedScriptProfile.PythonScriptPath = this.PythonScriptPath;
             SelectedScriptProfile.SelectedIpcMode = this.SelectedIpcMode;
+            SelectedScriptProfile.InputData = this.InputData;
 
             // Note: The Name property is not updated here, as renaming should typically be a separate action.
             // If you want to allow renaming, you would bind the Name TextBox to SelectedScriptProfile.Name directly.
@@ -228,6 +229,7 @@ public partial class MainViewModel : ObservableObject
                 Name = profileName,
                 PythonInterpreterPath = this.PythonInterpreterPath,
                 PythonScriptPath = this.PythonScriptPath,
+                InputData = this.InputData,
                 SelectedIpcMode = this.SelectedIpcMode
             };
 
@@ -343,6 +345,7 @@ public partial class MainViewModel : ObservableObject
                 PythonInterpreterPath = lastProfile.PythonInterpreterPath;
                 PythonScriptPath = lastProfile.PythonScriptPath;
                 SelectedIpcMode = lastProfile.SelectedIpcMode;
+                InputData = lastProfile.InputData;
             }
             else
             {
@@ -467,13 +470,14 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    private bool CanCancelExecution() => IsProcessing;
+
     [RelayCommand(CanExecute = nameof(CanCancelExecution))]
     private void CancelExecution()
     {
         Log.Information("Cancellation requested by user.");
         _cancellationSource?.Cancel();
     }
-    private bool CanCancelExecution() => IsProcessing;
 
     [RelayCommand]
     public void StopPythonProcess()
@@ -505,7 +509,6 @@ public partial class MainViewModel : ObservableObject
     private void OnProcessExited(int exitCode)
     {
         Log.Information("Python process exited with code: {ExitCode}", exitCode);
-        // --- REVISED LOGIC ---
         // Perform cleanup operations on a background thread to avoid blocking the UI.
         // Task.Run is a simple way to ensure this.
         Task.Run(() =>
@@ -630,8 +633,6 @@ public partial class MainViewModel : ObservableObject
             IsProcessing = false;
         });
     }
-
-
 
     // --- NEW: Helper method for detection ---
     /// <summary>

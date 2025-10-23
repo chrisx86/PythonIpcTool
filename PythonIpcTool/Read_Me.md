@@ -1,8 +1,4 @@
-﻿好的，我已將之前討論的優化與改善方向整合進系統需求書，並重新整理為一份更完整、更具前瞻性的需求書。
-
----
-
-## 系統需求書 - Python 互動式 IPC 工具 (WPF C#)
+﻿## 系統需求書 - Python 互動式 IPC 工具 (WPF C#)
 
 ### 1. 專案概述
 
@@ -460,5 +456,53 @@ StandardIOProcessCommunicator 中的 ReadStreamAsync 背景任務在進程退出
 避免不必要的取消警告:
 在 ExecutePythonScriptAsync 中，OnProcessExited 可能會在 SendMessageAsync 還在 await 時觸發 StopPythonProcess，進而取消 _cancellationSource。
 雖然現在清理是異步的，但為了讓日誌更乾淨，我們可以在 SendMessageAsync 之前添加一個 if (_cancellationSource.IsCancellationRequested) 檢查。但在這個新的非阻塞模型中，這個問題的發生機率大大降低，因為 StopPythonProcess 不再阻塞，整個流程更快。最主要的是，catch (OperationCanceledException) 區塊現在只負責重置 UI 狀態，因為真正的清理會由 OnProcessExited 事件觸發。
+
+
+問題根源分析 (Precise Diagnosis)
+根據我們之前的對話和程式碼演進，這個 30 秒的延遲幾乎可以 100% 肯定是來自於 LocalSocketProcessCommunicator 的 StartProcessAsync 方法中的超時等待。
+讓我們來追溯這個致命的執行流程：
+使用者點擊 "Execute Script" (假設使用 Local Socket 模式)。
+ExecutePythonScriptAsync 被呼叫。
+_activeCommunicator 被設置為一個 LocalSocketProcessCommunicator 的新實例。
+await _activeCommunicator.StartProcessAsync(...) 被呼叫。
+LocalSocketProcessCommunicator.StartProcessAsync 內部:
+_listener = new TcpListener(...) 啟動 TCP 伺服器。
+_pythonProcess = new Process(...) 創建 Python 進程物件。
+_pythonProcess.Start() 啟動 Python。
+var acceptTask = _listener.AcceptTcpClientAsync(...) 開始非同步地等待 Python 客戶端的連接。
+假設 Python 腳本由於某種原因未能成功連接 (例如，腳本有語法錯誤立即退出，或者防火牆阻擋了本地連接)。
+使用者點擊 "X" 關閉視窗:
+此時，StartProcessAsync 方法還在 await acceptTask，它並沒有完成，也沒有拋出異常。ExecutePythonScriptAsync 方法也處於暫停狀態。
+MainWindow_Closing 事件在 UI 執行緒上被觸發。
+viewModel.StopPythonProcessCommand.Execute(null) 被呼叫。
+StopPythonProcess() 和 CleanUpCommunicator() 內部:
+_activeCommunicator.StopProcess() 被呼叫。
+StopProcess 方法會執行 _cancellationTokenSource?.Cancel()。
+關鍵點：這個 Cancel() 動作會導致 StartProcessAsync 中的 acceptTask 拋出一個 OperationCanceledException。
+異常被 StartProcessAsync 的 catch 區塊捕獲。
+LocalSocketProcessCommunicator.StartProcessAsync 的 catch 區塊:
+code
+C#
+catch (Exception ex)
+{
+    // *** THE DEADLOCK / BLOCKING POINT ***
+    StopProcess(); // Re-entrant call to itself!
+    throw;
+}
+catch 區塊再次呼叫了 StopProcess()。這是一個重入 (re-entrant) 呼叫。
+此時，StopProcess() 正在 UI 執行緒上執行，而 StartProcessAsync 的 catch 區塊在一個背景執行緒上執行。
+這兩個執行緒現在可能會因為爭奪同一個鎖（例如 Process 物件的內部鎖）而產生死鎖 (Deadlock)。或者，StopProcess 中任何殘留的同步等待（即使是很短的 WaitForExit）都會在這裡造成災難，因為它在一個已經被取消的上下文中等待一個可能永遠不會發生的事件。
+簡化後的因果鏈： 關閉事件觸發了一個清理操作 (StopProcess)，這個清理操作意外地觸發了一個異常，而這個異常的處理程序又試圖執行同一個（或類似的）清理操作，導致了執行緒之間的死鎖或長時間等待。
+
+
+為何這樣做：
+重入保護 (_isStopping 旗標)：確保 StopProcess 的核心邏輯只會被執行一次，即使它被從多個地方意外呼叫。
+打破死鎖鏈: StartProcessAsync 的 catch 區塊不再呼叫 StopProcess，徹底消除了重入死鎖的可能性。ViewModel 的 finally 區塊會負責捕獲異常並呼叫 StopProcess。
+快速關閉: MainWindow_Closing 現在直接呼叫 StopPythonProcess。由於我們已經確保了 Communicator 的 StopProcess 方法使用的是非阻塞的 Kill()，所以這個呼叫會立即返回，UI 執行緒不會被阻塞，應用程式會瞬間關閉。
+
+
+
+
+
 
 
