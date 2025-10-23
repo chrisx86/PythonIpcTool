@@ -1,8 +1,8 @@
 ﻿using System.IO;
 using System.Text;
 using System.Diagnostics;
-using PythonIpcTool.Exceptions;
 using PythonIpcTool.Models;
+using PythonIpcTool.Exceptions;
 using Serilog; // Ensure this namespace is correct for IpcMode
 
 namespace PythonIpcTool.Services;
@@ -27,12 +27,12 @@ public class StandardIOProcessCommunicator : IPythonProcessCommunicator
     /// 設置 ProcessStartInfo：關鍵是 UseShellExecute = false (必須重定向 I/O) 和 RedirectStandardInput/Output/Error = true。CreateNoWindow = true：防止 Python 腳本彈出黑窗。EnableRaisingEvents = true：允許訂閱 Exited 事件。啟動進程後，ReadStreamAsync 會異步地持續讀取 StandardOutput 和 StandardError，不會阻塞 UI。await Task.Delay(100)：一個小的延遲，讓 Python 進程有時間啟動和初始化，尤其是在低配置機器或複雜腳本啟動時。
     /// </summary>
     /// <param name="pythonInterpreterPath">Path to the Python interpreter executable.</param>
-    /// <param name="scriptPath">Path to the Python script to execute.</param>
+    /// <param name="argumentsOrScriptPath">Path to the Python script to execute.</param>
     /// <param name="mode">The IPC mode (must be StandardIO for this implementation).</param>
     /// <returns>A Task representing the asynchronous operation.</returns>
     /// <exception cref="ArgumentException">Thrown if mode is not StandardIO.</exception>
     /// <exception cref="InvalidOperationException">Thrown if the process fails to start.</exception>
-    public async Task StartProcessAsync(string pythonInterpreterPath, string scriptPath, IpcMode mode, CancellationToken cancellationToken)
+    public async Task StartProcessAsync(string pythonInterpreterPath, string argumentsOrScriptPath, IpcMode mode, CancellationToken cancellationToken)
     {
         if (mode != IpcMode.StandardIO)
         {
@@ -44,7 +44,7 @@ public class StandardIOProcessCommunicator : IPythonProcessCommunicator
         var startInfo = new ProcessStartInfo
         {
             FileName = pythonInterpreterPath,
-            Arguments = $"\"{scriptPath}\"",
+            Arguments = argumentsOrScriptPath,
             UseShellExecute = false,
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
@@ -64,7 +64,7 @@ public class StandardIOProcessCommunicator : IPythonProcessCommunicator
             bool started = _pythonProcess.Start();
             if (!started)
             {
-                throw new InvalidOperationException($"Failed to start Python process: {pythonInterpreterPath} {scriptPath}");
+                throw new InvalidOperationException($"Failed to start Python process: {pythonInterpreterPath} {argumentsOrScriptPath}");
             }
 
             // Start background reading tasks with an internal token so they can be stopped separately

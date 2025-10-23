@@ -204,34 +204,86 @@ public partial class MainViewModel : ObservableObject
             IsEnvironmentBusy = false;
         }
     }
+
     private bool CanCreateVenv() => !IsEnvironmentBusy && !IsProcessing;
+
     // NEW: Command to install dependencies
     [RelayCommand(CanExecute = nameof(CanInstallDependencies))]
     private async Task InstallDependenciesAsync()
     {
-        string projectDirectory = Path.GetDirectoryName(PythonScriptPath)!;
-        string requirementsPath = Path.Combine(projectDirectory, "requirements.txt");
+        // We need to get the directory of the script to find requirements.txt
+        string? scriptDir = Path.GetDirectoryName(PythonScriptPath);
+        if (scriptDir == null)
+        {
+            Log.Error("Could not determine the script directory.");
+            return;
+        }
+        var requirementsPath = Path.Combine(scriptDir, "requirements.txt");
 
-        IsEnvironmentBusy = true;
+        Log.Information("Starting dependency installation from {RequirementsFile}...", requirementsPath);
+        IsProcessing = true; // Set busy state
+
         try
         {
-            await _envService.InstallDependenciesAsync(PythonInterpreterPath, requirementsPath);
+            // We create a temporary StandardIOProcessCommunicator just for this task
+            var installerCommunicator = new StandardIOProcessCommunicator();
+
+            // We don't need a script, we pass arguments to pip directly
+            var arguments = $"-m pip install -r \"{requirementsPath}\"";
+            Log.Information("Command to install dependencies: {command}", arguments);
+            // We need a way to capture the output of this process
+            var installLogs = new StringBuilder();
+            installerCommunicator.OutputReceived += (log) => installLogs.AppendLine(log);
+            installerCommunicator.ErrorReceived += (log) => installLogs.AppendLine($"[ERROR] {log}");
+
+            var processExitedTcs = new TaskCompletionSource<int>();
+            installerCommunicator.ProcessExited += (exitCode) => processExitedTcs.SetResult(exitCode);
+
+            Log.Information("Wait for the process to complete...");
+
+            // Start the process without a script, but with arguments
+            await installerCommunicator.StartProcessAsync(PythonInterpreterPath, arguments, IpcMode.StandardIO, CancellationToken.None);
+
+            int exitCode = await processExitedTcs.Task; // Wait for the process to complete
+
+            if (exitCode == 0)
+            {
+                Log.Information("Dependencies installed successfully.");
+                await _dialogCoordinator.ShowMessageAsync(this, "Success", "Dependencies were installed successfully into the virtual environment.");
+            }
+            else
+            {
+                Log.Error("Failed to install dependencies. Exit code: {ExitCode}. See details below:\n{InstallLogs}", exitCode, installLogs.ToString());
+                await _dialogCoordinator.ShowMessageAsync(this, "Error", $"Failed to install dependencies. Please check the logs for details.\n\nOutput:\n{installLogs.ToString()}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "An exception occurred while trying to install dependencies.");
+            await _dialogCoordinator.ShowMessageAsync(this, "Error", $"An unexpected error occurred: {ex.Message}");
         }
         finally
         {
-            IsEnvironmentBusy = false;
+            IsProcessing = false;
         }
-    }
-    private bool CanInstallDependencies()
-    {
-        if (IsEnvironmentBusy || IsProcessing || !IsVirtualEnvDetected || string.IsNullOrWhiteSpace(PythonScriptPath))
-        {
-            return false;
-        }
-        string projectDirectory = Path.GetDirectoryName(PythonScriptPath)!;
-        return File.Exists(Path.Combine(projectDirectory, "requirements.txt"));
     }
 
+    private bool CanInstallDependencies()
+    {
+        // Condition 1: Must not be busy
+        if (IsProcessing) return false;
+
+        // Condition 2: Must have a virtual environment detected
+        if (!_isVirtualEnvDetected) return false;
+
+        // Condition 3: A requirements.txt file must exist next to the selected script
+        string? scriptDir = Path.GetDirectoryName(PythonScriptPath);
+        if (string.IsNullOrWhiteSpace(scriptDir)) return false;
+
+        if (!File.Exists(Path.Combine(scriptDir, "requirements.txt"))) return false;
+
+        return true;
+    }
 
     // --- NEW: Implement IDisposable to clean up the subscription ---
     /// <summary>
