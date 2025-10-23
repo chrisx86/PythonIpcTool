@@ -1,7 +1,7 @@
-﻿using System.Diagnostics;
-using System.IO;
-using System.Net.Sockets;
+﻿using System.IO;
 using System.Text;
+using System.Diagnostics;
+using System.Net.Sockets;
 using PythonIpcTool.Models;
 using PythonIpcTool.Exceptions;
 using Serilog;
@@ -25,6 +25,8 @@ public class LocalSocketProcessCommunicator : IPythonProcessCommunicator
     public event Action<string>? ErrorReceived;
     public event Action<int>? ProcessExited;
 
+    private volatile bool _isStopping = false;
+
     public async Task StartProcessAsync(string pythonInterpreterPath, string scriptPath, IpcMode mode, CancellationToken cancellationToken)
     {
         if (mode != IpcMode.StandardIO)
@@ -47,6 +49,7 @@ public class LocalSocketProcessCommunicator : IPythonProcessCommunicator
             StandardErrorEncoding = Encoding.UTF8
         };
 
+        //創建 Python 進程物件
         _pythonProcess = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
         _pythonProcess.Exited += (sender, e) => ProcessExited?.Invoke(_pythonProcess.ExitCode);
 
@@ -72,13 +75,11 @@ public class LocalSocketProcessCommunicator : IPythonProcessCommunicator
         catch (OperationCanceledException)
         {
             Log.Warning("Process start was canceled.");
-            StopProcess();
             throw;
         }
         catch (Exception ex)
         {
             Log.Error(ex, "Failed to write to Python process standard input.");
-            StopProcess();
             throw new PythonProcessException($"Failed to start or connect socket process: {ex.Message}", ex);
         }
     }
@@ -127,14 +128,19 @@ public class LocalSocketProcessCommunicator : IPythonProcessCommunicator
 
     public void StopProcess()
     {
+        // --- RE-ENTRANCY GUARD ---
+        if (_isStopping)
+        {
+            return; // Already in the process of stopping, do nothing.
+        }
+        _isStopping = true;
+
         _internalReadCts?.Cancel(); // Stop the background readers
 
         if (_pythonProcess != null && !_pythonProcess.HasExited)
         {
             _pythonProcess.Exited -= OnProcessExitedHandler;
         }
-
-        _internalReadCts?.Cancel();
 
         _stream?.Close();
         _client?.Close();

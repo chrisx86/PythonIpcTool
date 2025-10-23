@@ -1,10 +1,6 @@
-﻿// Services/StandardIOProcessCommunicator.cs
-using System;
-using System.Diagnostics;
-using System.IO;
+﻿using System.IO;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
+using System.Diagnostics;
 using PythonIpcTool.Exceptions;
 using PythonIpcTool.Models;
 using Serilog; // Ensure this namespace is correct for IpcMode
@@ -23,6 +19,8 @@ public class StandardIOProcessCommunicator : IPythonProcessCommunicator
     public event Action<string>? OutputReceived;
     public event Action<string>? ErrorReceived;
     public event Action<int>? ProcessExited;
+
+    private volatile bool _isStopping = false;
 
     /// <summary>
     /// Starts the Python process and begins listening to its standard output and error streams.
@@ -85,13 +83,12 @@ public class StandardIOProcessCommunicator : IPythonProcessCommunicator
         catch (OperationCanceledException)
         {
             Log.Warning("Process start was canceled by the user.");
-            StopProcess(); // Ensure cleanup if canceled during startup
             throw; // Re-throw so the ViewModel knows it was canceled
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            StopProcess(); // Ensure cleanup on any other failure
-            throw;
+            Log.Error(ex, "Failed to write to Python process standard input.");
+            throw new PythonProcessException($"Failed to start or connect socket process: {ex.Message}", ex);
         }
     }
 
@@ -133,6 +130,12 @@ public class StandardIOProcessCommunicator : IPythonProcessCommunicator
     /// </summary>
     public void StopProcess()
     {
+        if (_isStopping)
+        {
+            return; // Already in the process of stopping, do nothing.
+        }
+        _isStopping = true;
+
         _internalReadCts?.Cancel(); // Stop the background reading tasks
 
         if (_pythonProcess != null && !_pythonProcess.HasExited)

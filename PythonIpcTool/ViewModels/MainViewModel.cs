@@ -455,7 +455,15 @@ public partial class MainViewModel : ObservableObject
             // Catch any other unexpected exceptions
             Log.Error(ex, "An unexpected error occurred during Python script execution.");
             IsProcessing = false;
-            StopPythonProcess(); // Clean up if setup fails
+        }
+        finally
+        {
+            // THIS IS THE GUARANTEED CLEANUP POINT for a single execution task.
+            if (IsProcessing)
+            {
+                IsProcessing = false;
+            }
+            StopPythonProcess(); // This will clean up the communicator for this task.
         }
     }
 
@@ -468,7 +476,7 @@ public partial class MainViewModel : ObservableObject
     private bool CanCancelExecution() => IsProcessing;
 
     [RelayCommand]
-    private void StopPythonProcess()
+    public void StopPythonProcess()
     {
         Log.Debug("Stopping and cleaning up active communicator.");
         CleanUpCommunicator();

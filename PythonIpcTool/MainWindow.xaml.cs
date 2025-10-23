@@ -1,8 +1,8 @@
-﻿using MahApps.Metro.Controls;
+﻿using System.ComponentModel; // Required for CancelEventArgs
+using MahApps.Metro.Controls;
+using MahApps.Metro.Controls.Dialogs;
 using PythonIpcTool.Services;
 using PythonIpcTool.ViewModels;
-using System.ComponentModel; // Required for CancelEventArgs
-using MahApps.Metro.Controls.Dialogs;
 
 namespace PythonIpcTool.Views;
 
@@ -17,7 +17,6 @@ public partial class MainWindow : MetroWindow
 
         IConfigurationService configService = new JsonConfigurationService();
 
-        // 我們同時提供了 configService 和 DialogCoordinator.Instance
         DataContext = new MainViewModel(configService, DialogCoordinator.Instance);
 
         this.Closing += MainWindow_Closing;
@@ -31,8 +30,11 @@ public partial class MainWindow : MetroWindow
     {
         if (this.DataContext is MainViewModel viewModel)
         {
-            // MODIFICATION: Call the new StopPythonProcessCommand
-            viewModel.StopPythonProcessCommand.Execute(null);
+            // --- MODIFIED: Direct and fast cleanup ---
+            // Instead of calling the command which might be tied to complex logic,
+            // we directly call the cleanup method which now has the fast Kill().
+            // This ensures the UI thread is not blocked.
+            viewModel.StopPythonProcess();
         }
     }
 
