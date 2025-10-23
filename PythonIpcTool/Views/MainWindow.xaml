@@ -404,10 +404,6 @@
                         </ListView.ContextMenu>
                     </ListView>
 
-                    <!-- 
-                        NEW: Watermark for empty log.
-                        This TextBlock is only visible when the LogEntries collection is empty.
-                    -->
                     <TextBlock Text="Logs will appear here..."
                        Foreground="{DynamicResource MahApps.Brushes.Gray5}"
                        IsHitTestVisible="False"
