@@ -25,13 +25,18 @@ public partial class MainViewModel : ObservableObject
     private readonly IDisposable _logSubscription;
     private readonly IConfigurationService? _configurationService;
     private readonly IDialogCoordinator _dialogCoordinator;
+    private readonly IPythonEnvironmentService _envService;
     // Field is now nullable to accommodate design-time instance where it will be null.
     private IPythonProcessCommunicator? _activeCommunicator;
     private ScriptProfile? _oldSelectedProfile;
     private bool _isInitialized = false;
     private CancellationTokenSource? _cancellationSource;
 
+    [ObservableProperty]
+    private bool _isEnvironmentBusy;
+
     public ObservableCollection<ScriptProfile> ScriptProfiles { get; } = new();
+
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))] // 當切換 Profile 時重新檢查按鈕狀態
     [NotifyCanExecuteChangedFor(nameof(RemoveSelectedProfileCommand))]
@@ -40,11 +45,14 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))]
     [NotifyCanExecuteChangedFor(nameof(SaveOrUpdateProfileCommand))]
+    [NotifyCanExecuteChangedFor(nameof(InstallDependenciesCommand))] // And this one
     private string _pythonInterpreterPath = "python.exe";
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CreateVenvCommand))]
     [NotifyCanExecuteChangedFor(nameof(SaveOrUpdateProfileCommand))]
+    [NotifyCanExecuteChangedFor(nameof(InstallDependenciesCommand))]
     private string _pythonScriptPath = "";
 
     // Property for user input data
@@ -68,18 +76,13 @@ public partial class MainViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(CancelExecutionCommand))]
     private bool _isProcessing;
 
-    // Property for selecting IPC mode
-    //[ObservableProperty]
-    //private IpcMode _selectedIpcMode = IpcMode.StandardIO;
-    //partial void OnSelectedIpcModeChanged(IpcMode value) => UpdateSelectedProfilePaths();
-
     public ObservableCollection<LogEntry> LogEntries { get; } = new ();
 
-    // --- NEW: Property for Virtual Environment Status ---
     [ObservableProperty]
     private string _virtualEnvStatusMessage = string.Empty;
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(InstallDependenciesCommand))]// This is important for enabling/disabling the install button
     private bool _isVirtualEnvDetected = false;
 
     /// <summary>
@@ -108,11 +111,15 @@ public partial class MainViewModel : ObservableObject
     /// It populates the ViewModel with sample data for design-time visualization.
     /// It does NOT perform any runtime logic or service instantiation.
     /// </summary>
-    public MainViewModel(IConfigurationService configurationService, IDialogCoordinator dialogCoordinator)
+    public MainViewModel(IConfigurationService configurationService, IDialogCoordinator dialogCoordinator, IPythonEnvironmentService envService)
     {
         _configurationService = configurationService ?? throw new ArgumentNullException(nameof(configurationService));
         _dialogCoordinator = dialogCoordinator ?? throw new ArgumentNullException(nameof(dialogCoordinator));
         ScriptProfiles = new ObservableCollection<ScriptProfile>();
+        _envService = envService;
+
+        _envService.OutputReceived += (log) => Log.Information(log); // Pipe output to our logger
+
         App.LogEvents.CollectionChanged += OnLogEvent;
         LoadInitialSettings();
         _isInitialized = true;
@@ -140,6 +147,87 @@ public partial class MainViewModel : ObservableObject
 
         Log.Information("Application started. Ready for input.");
     }
+
+    // This partial method is automatically called by the source generator
+    // whenever the PythonInterpreterPath property changes.
+    partial void OnPythonInterpreterPathChanged(string value)
+    {
+        // When the path changes, re-run the virtual environment check.
+        CheckForVirtualEnvironment(value);
+
+        // Also, if a profile is selected, we should update its data.
+        if (SelectedScriptProfile != null)
+        {
+            SelectedScriptProfile.PythonInterpreterPath = value;
+        }
+    }
+
+    // For consistency, do the same for the script path.
+    partial void OnPythonScriptPathChanged(string value)
+    {
+        if (SelectedScriptProfile != null)
+        {
+            SelectedScriptProfile.PythonScriptPath = value;
+        }
+        // Although not directly related to venv detection, this keeps the profile updated.
+        // It also ensures the CanExecute for InstallDependenciesCommand is re-evaluated.
+        InstallDependenciesCommand.NotifyCanExecuteChanged();
+    }
+
+    // NEW: Command to create a virtual environment
+    [RelayCommand(CanExecute = nameof(CanCreateVenv))]
+    private async Task CreateVenvAsync()
+    {
+        if (string.IsNullOrWhiteSpace(PythonScriptPath) || !File.Exists(PythonScriptPath))
+        {
+            await _dialogCoordinator.ShowMessageAsync(this, "Error", "Please select a valid Python script first to determine the project directory.");
+            return;
+        }
+
+        IsEnvironmentBusy = true;
+        try
+        {
+            string projectDirectory = Path.GetDirectoryName(PythonScriptPath)!;
+            string? newPythonPath = await _envService.CreateVenvAsync("python", projectDirectory);
+            if (newPythonPath != null && File.Exists(newPythonPath))
+            {
+                // Automatically update the path to the new venv interpreter
+                PythonInterpreterPath = newPythonPath;
+            }
+        }
+        finally
+        {
+            IsEnvironmentBusy = false;
+        }
+    }
+    private bool CanCreateVenv() => !IsEnvironmentBusy && !IsProcessing;
+    // NEW: Command to install dependencies
+    [RelayCommand(CanExecute = nameof(CanInstallDependencies))]
+    private async Task InstallDependenciesAsync()
+    {
+        string projectDirectory = Path.GetDirectoryName(PythonScriptPath)!;
+        string requirementsPath = Path.Combine(projectDirectory, "requirements.txt");
+
+        IsEnvironmentBusy = true;
+        try
+        {
+            await _envService.InstallDependenciesAsync(PythonInterpreterPath, requirementsPath);
+        }
+        finally
+        {
+            IsEnvironmentBusy = false;
+        }
+    }
+    private bool CanInstallDependencies()
+    {
+        if (IsEnvironmentBusy || IsProcessing || !IsVirtualEnvDetected || string.IsNullOrWhiteSpace(PythonScriptPath))
+        {
+            return false;
+        }
+        string projectDirectory = Path.GetDirectoryName(PythonScriptPath)!;
+        return File.Exists(Path.Combine(projectDirectory, "requirements.txt"));
+    }
+
 
     // --- NEW: Implement IDisposable to clean up the subscription ---
     /// <summary>
@@ -634,7 +722,6 @@ public partial class MainViewModel : ObservableObject
         });
     }
 
-    // --- NEW: Helper method for detection ---
     /// <summary>
     /// Checks if the provided Python interpreter path is inside a standard virtual environment.
     /// Updates UI properties based on the result.

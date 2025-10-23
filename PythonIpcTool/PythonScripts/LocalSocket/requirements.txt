@@ -1,0 +1,12 @@
+﻿pandas
+scikit-learn
+joblib
+requests
+beautifulsoup4
+Pillow
+textblob
+matplotlib
+qrcode[pil]
+yt-dlp
+Markdown
+google-cloud-speech

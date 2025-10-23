@@ -1,4 +1,4 @@
-﻿using PythonIpcTool.Services; // 確保有這個 using
+﻿using PythonIpcTool.Services;
 
 namespace PythonIpcTool.ViewModels;
 
@@ -9,10 +9,24 @@ public class DesignMainViewModel : MainViewModel
     /// It provides design-time safe mock services to the base MainViewModel constructor.
     /// </summary>
     public DesignMainViewModel()
-        : base(new DesignConfigurationService(), new DesignDialogCoordinator()) // <-- 關鍵修正點
+        : base(new DesignConfigurationService(), new DesignDialogCoordinator(), new DesignPythonEnvironmentService())
     {
-        // The base constructor is now called with the required mock dependencies.
-        // You can add more design-time specific data here if needed.
+        // The base constructor is now correctly called with all required mock dependencies.
+        // You can add more design-time specific data here if needed, for example:
+        //if (IsInDesignMode)
+        //{
+        //    // This property is available from ObservableObject (via CommunityToolkit.Mvvm)
+        //    // to distinguish design time from run time.
+        //    LogEntries.Add(new Models.LogEntry(
+        //        new Serilog.Events.LogEvent(
+        //            DateTimeOffset.Now,
+        //            Serilog.Events.LogEventLevel.Information,
+        //            null,
+        //            new Serilog.Events.MessageTemplate(new[] { new Serilog.Events.PropertyToken("Design Mode", "Design Mode Active") }),
+        //            new System.Collections.Generic.List<Serilog.Events.LogEventProperty>()
+        //        )
+        //    ));
+        //}
     }
 }
 

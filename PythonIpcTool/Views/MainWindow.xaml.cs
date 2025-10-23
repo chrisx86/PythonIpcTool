@@ -16,8 +16,8 @@ public partial class MainWindow : MetroWindow
         InitializeComponent();
 
         IConfigurationService configService = new JsonConfigurationService();
-
-        DataContext = new MainViewModel(configService, DialogCoordinator.Instance);
+        IPythonEnvironmentService envService = new PythonEnvironmentService();
+        DataContext = new MainViewModel(configService, DialogCoordinator.Instance, envService);
 
         this.Closing += MainWindow_Closing;
         this.Closed += MainWindow_Closed;

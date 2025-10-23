@@ -22,10 +22,15 @@
 
     <Controls:MetroWindow.Resources>
         <!-- Define all converters in a central place for clarity -->
-        <ResourceDictionary>
+        <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:converters="clr-namespace:PythonIpcTool.Converters">
+            <!-- Needed for the green checkmark icon's visibility -->
             <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+            <!-- Needed for the main StackPanel's visibility -->
             <converters:StringNullOrEmptyToVisibilityConverter x:Key="StringNullOrEmptyToVisibilityConverter"/>
             <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+            <!-- Needed for the orange alert icon's visibility -->
             <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter"/>
             <converters:EnumToBooleanConverter x:Key="EnumToBooleanConverter"/>
             <converters:LogLevelToBrushConverter x:Key="LogLevelToBrushConverter"/>
@@ -133,49 +138,65 @@
                                 <Button DockPanel.Dock="Right" Content="Browse..." Command="{Binding BrowsePythonInterpreterCommand}" Margin="5,0,0,0"/>
                                 <TextBox Text="{Binding PythonInterpreterPath, UpdateSourceTrigger=PropertyChanged}"/>
                             </DockPanel>
+                            
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                                <Button Command="{Binding CreateVenvCommand}" Margin="0,0,10,0" ToolTip="Create a 'venv' folder in the script's directory">
+                                    <StackPanel Orientation="Horizontal">
+                                        <iconPacks:PackIconMaterial Kind="FolderPlusOutline" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                        <TextBlock Text="Create Venv"/>
+                                    </StackPanel>
+                                </Button>
+                                <Button Command="{Binding InstallDependenciesCommand}" ToolTip="Run 'pip install -r requirements.txt' in the selected venv">
+                                    <StackPanel Orientation="Horizontal">
+                                        <iconPacks:PackIconMaterial Kind="Download" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                        <TextBlock Text="Install Dependencies"/>
+                                    </StackPanel>
+                                </Button>
+                                <Controls:ProgressRing IsActive="{Binding IsEnvironmentBusy}" Width="16" Height="16" Margin="10,0,0,0"/>
+                            </StackPanel>
 
+                            <TextBlock Text="Python Script Path:" FontWeight="SemiBold"/>
+                            <DockPanel Margin="0,5,0,15">
+                                <Button DockPanel.Dock="Right" Content="Browse..." Command="{Binding BrowsePythonScriptCommand}" Margin="5,0,0,0"/>
+                                <TextBox Text="{Binding PythonScriptPath, UpdateSourceTrigger=PropertyChanged}"/>
+                            </DockPanel>
                             <!-- Virtual Env Status Panel -->
-                            <!-- This panel as a whole is only visible when the VirtualEnvStatusMessage string is not null or empty. -->
+                            <!-- This entire panel is only visible when the VirtualEnvStatusMessage string is not null or empty. -->
                             <StackPanel Orientation="Horizontal" Margin="0 2 0 10"
                                 Visibility="{Binding VirtualEnvStatusMessage, Converter={StaticResource StringNullOrEmptyToVisibilityConverter}}">
-
                                 <!-- 
                                     Success Icon: A green checkmark.
-                                    Visible only when a virtual environment IS detected (IsVirtualEnvDetected = True).
+                                    This is visible only when a virtual environment IS detected (IsVirtualEnvDetected = True).
                                 -->
                                 <iconPacks:PackIconMaterial Kind="CheckDecagram" 
-                                    VerticalAlignment="Center" 
-                                    Margin="0 0 5 0"
-                                    Foreground="ForestGreen"
-                                    ToolTip="A virtual environment was detected."
-                                    Visibility="{Binding IsVirtualEnvDetected, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                VerticalAlignment="Center" 
+                                Margin="0 0 5 0"
+                                Foreground="ForestGreen"
+                                ToolTip="A virtual environment was detected. This is the recommended setup."
+                                Visibility="{Binding IsVirtualEnvDetected, Converter={StaticResource BooleanToVisibilityConverter}}"/>
 
                                 <!-- 
                                     Warning Icon: An orange alert circle.
-                                    Visible only when a virtual environment IS NOT detected (IsVirtualEnvDetected = False).
-                                    We use the InverseBooleanToVisibilityConverter for this.
+                                    This is visible only when a virtual environment IS NOT detected (IsVirtualEnvDetected = False).
+                                    It uses the InverseBooleanToVisibilityConverter to achieve this.
                                 -->
                                 <iconPacks:PackIconMaterial Kind="AlertCircleOutline" 
-                                    VerticalAlignment="Center" 
-                                    Margin="0 0 5 0"
-                                    Foreground="Orange"
-                                    ToolTip="No virtual environment detected. Using global Python installation is not recommended for production."
-                                    Visibility="{Binding IsVirtualEnvDetected, Converter={StaticResource InverseBooleanToVisibilityConverter}}"/>
+                                VerticalAlignment="Center" 
+                                Margin="0 0 5 0"
+                                Foreground="Orange"
+                                ToolTip="No virtual environment detected. Using a global Python installation is not recommended for project isolation."
+                                Visibility="{Binding IsVirtualEnvDetected, Converter={StaticResource InverseBooleanToVisibilityConverter}}"/>
 
                                 <!-- 
-                                    Status Message Text: Displays the text from the ViewModel.
+                                    Status Message Text: Displays the actual text message from the ViewModel.
+                                    Styled to look like a piece of helper text.
                                 -->
                                 <TextBlock Text="{Binding VirtualEnvStatusMessage}"
                                    FontStyle="Italic"
                                    VerticalAlignment="Center"
                                    Opacity="0.8"/>
                             </StackPanel>
-                            
-                            <TextBlock Text="Python Script Path:" FontWeight="SemiBold"/>
-                            <DockPanel Margin="0,5,0,15">
-                                <Button DockPanel.Dock="Right" Content="Browse..." Command="{Binding BrowsePythonScriptCommand}" Margin="5,0,0,0"/>
-                                <TextBox Text="{Binding PythonScriptPath, UpdateSourceTrigger=PropertyChanged}"/>
-                            </DockPanel>
+
 
                             <TextBlock Text="IPC Communication Mode:" FontWeight="SemiBold"/>
                             <StackPanel Orientation="Horizontal" Margin="0,5,0,0">

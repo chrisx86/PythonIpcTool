@@ -502,6 +502,11 @@ catch 區塊再次呼叫了 StopProcess()。這是一個重入 (re-entrant) 呼�
 
 
 
+UpdateSourceTrigger=PropertyChanged：我們之前已經設定了 TextBox 在每次按鍵時都更新 ViewModel 屬性，這是正確的第一步。
+CommunityToolkit.Mvvm 的解決方案：[ObservableProperty] 這個屬性會自動生成一個 partial void On<PropertyName>Changed(T value) 的方法掛鉤 (hook)。我們只需要實現這個部分方法，就可以在屬性值改變後立即執行我們想要的任何邏輯。
+
+
+
 
 
 
