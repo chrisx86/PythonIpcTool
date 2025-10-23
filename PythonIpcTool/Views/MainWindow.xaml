@@ -268,10 +268,27 @@
             <!-- Output Data GroupBox -->
             <GroupBox Grid.Row="0">
                 <GroupBox.Header>
-                    <StackPanel Orientation="Horizontal">
-                        <iconPacks:PackIconMaterial Kind="ArrowLeftBoldBoxOutline" VerticalAlignment="Center" Margin="0 0 5 0"/>
-                        <TextBlock Text="Output Data from Python" FontWeight="Bold"/>
-                    </StackPanel>
+                    <DockPanel LastChildFill="True" Width="{Binding Path=ActualWidth, 
+                               RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type GroupBox}}}">
+                        <!-- Title on the left -->
+                        <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+                            <iconPacks:PackIconMaterial Kind="ArrowLeftBoldBoxOutline" VerticalAlignment="Center" Margin="0 0 5 0"/>
+                            <TextBlock Text="Output Data from Python" FontWeight="Bold"/>
+                        </StackPanel>
+
+                        <!-- === THIS IS THE NEW BUTTON === -->
+                        <!-- Button on the right -->
+                        <Button Command="{Binding ClearOutputCommand}"
+                        DockPanel.Dock="Right"
+                        ToolTip="Clear the output text area"
+                        Style="{StaticResource MahApps.Styles.Button.Chromeless}"
+                        Margin="0 -5 5 -5">
+                            <StackPanel Orientation="Horizontal">
+                                <iconPacks:PackIconMaterial Kind="Broom" VerticalAlignment="Center"/>
+                                <TextBlock Text="Clear" Margin="5 0 0 0" FontWeight="Normal"/>
+                            </StackPanel>
+                        </Button>
+                    </DockPanel>
                 </GroupBox.Header>
                 <!-- Use a Grid to overlay the TextBox and the Watermark TextBlock -->
                 <Grid>
@@ -311,6 +328,7 @@
                             </Style>
                         </TextBlock.Style>
                     </TextBlock>
+                    
                 </Grid>
             </GroupBox>
 

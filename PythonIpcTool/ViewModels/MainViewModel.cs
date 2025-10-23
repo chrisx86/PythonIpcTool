@@ -9,11 +9,14 @@ using ControlzEx.Theming;
 using PythonIpcTool.Models;
 using PythonIpcTool.Services;
 using PythonIpcTool.Exceptions;
+using PythonIpcTool.Extensions;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Serilog;
 using Serilog.Events;
 using MahApps.Metro.Controls.Dialogs;
+using System.Text.RegularExpressions; // For more advanced cleanup if needed
+
 
 namespace PythonIpcTool.ViewModels;
 
@@ -29,8 +32,9 @@ public partial class MainViewModel : ObservableObject
     // Field is now nullable to accommodate design-time instance where it will be null.
     private IPythonProcessCommunicator? _activeCommunicator;
     private ScriptProfile? _oldSelectedProfile;
-    private bool _isInitialized = false;
     private CancellationTokenSource? _cancellationSource;
+    private bool _isInitialized = false;
+    private int _executionCount = 0;
 
     [ObservableProperty]
     private bool _isEnvironmentBusy;
@@ -474,35 +478,44 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanExecutePythonScript))]
     private async Task ExecutePythonScriptAsync()
     {
-        try
-        {
-            JsonDocument.Parse(InputData);
-        }
-        catch (JsonException ex)
-        {
-            Log.Error(ex, "Invalid JSON format in input data.");
-            // Optionally show a message box to the user here
-            MessageBox.Show($"The input data is not a valid JSON.\n\nDetails: {ex.Message}", "Invalid Input", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return; // Stop execution
-        }
         IsProcessing = true;
         //OutputResult = "";
         Logs.Clear();
-        Log.Information($"[INFO] Starting Python script in {this.SelectedIpcMode} mode...");
-
+        _executionCount++;
+        string ordinalExecution = _executionCount.ToOrdinal(); // Use your extension method!
+        if (_executionCount > 1)
+        {
+            // Add some space and a separator line before the next output
+            OutputResult += $"{Environment.NewLine}{Environment.NewLine}--- {ordinalExecution} Execution ---{Environment.NewLine}";
+        }
+        else
+        {
+            OutputResult = $"--- {_executionCount.ToOrdinal()} Execution ---{Environment.NewLine}";
+        }
+        Log.Information("[INFO] Starting {Ordinal} Python script execution in {Mode} mode...", ordinalExecution, SelectedIpcMode);
         _cancellationSource = new CancellationTokenSource();
-
-        // --- MODIFICATION START: Dynamic Communicator Creation ---
+        IPythonProcessCommunicator? localCommunicator = null;
         try
         {
-            IPythonProcessCommunicator communicator = this.SelectedIpcMode switch
+            (bool isValid, string processedInput) = PreprocessJsonInput(InputData);
+            // If preprocessing determines the input is fundamentally invalid (e.g., completely unparseable),
+            // we log it and stop, but after the UI state has been correctly set.
+            if (!isValid)
+            {
+                Log.Error("Input data could not be parsed as valid JSON or a Python dictionary. Please check the format.");
+                // We don't need a MessageBox here as the log provides the feedback.
+                return; // Stop execution
+            }
+            Log.Information("Sending processed input to Python: {Input}", processedInput);
+
+            localCommunicator = this.SelectedIpcMode switch
             {
                 IpcMode.StandardIO => new StandardIOProcessCommunicator(),
                 IpcMode.LocalSocket => new LocalSocketProcessCommunicator(),
                 // The default case now throws a very specific exception.
                 _ => throw new InvalidOperationException($"IPC mode '{this.SelectedIpcMode}' is not supported.")
             };
-            _activeCommunicator = communicator;
+            _activeCommunicator = localCommunicator;
             // Subscribe to its events
             _activeCommunicator.OutputReceived += OnOutputReceived;
             _activeCommunicator.ErrorReceived += OnErrorReceived;
@@ -525,8 +538,8 @@ public partial class MainViewModel : ObservableObject
             }
             else
             {
-                await _activeCommunicator.SendMessageAsync(InputData, _cancellationSource.Token);
-                Log.Information($"[INFO] Input sent to Python script: {InputData}");
+                await _activeCommunicator.SendMessageAsync(processedInput, _cancellationSource.Token);
+                Log.Information($"[INFO] Input sent to Python script: {Path.GetFileName(this.PythonScriptPath)} {processedInput}");
             }
         }
         // --- MODIFICATION: More specific exception handling ---
@@ -693,7 +706,7 @@ public partial class MainViewModel : ObservableObject
         {
             string formattedOutput = TryFormatJson(output);
             OutputResult += formattedOutput + Environment.NewLine;
-            Log.Debug("Python OUT: {Output}", output); // Log raw output at debug level
+            Log.Debug("Python OUT for {Ordinal} run: {Output}", _executionCount.ToOrdinal(), output);
             IsProcessing = false;
         });
     }
@@ -794,4 +807,48 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Validates and preprocesses the raw input string into a compact, single-line format.
+    /// </summary>
+    /// <param name="rawInput">The raw input from the TextBox.</param>
+    /// <returns>A tuple containing a boolean indicating validity and the processed string.</returns>
+    private (bool IsValid, string ProcessedString) PreprocessJsonInput(string rawInput)
+    {
+        if (string.IsNullOrWhiteSpace(rawInput))
+        {
+            // An empty input is valid and can be treated as an empty JSON object.
+            return (true, "{}");
+        }
+
+        // First, try to parse as strict JSON (handles multi-line correctly).
+        try
+        {
+            using (JsonDocument doc = JsonDocument.Parse(rawInput))
+            {
+                // If successful, serialize to a compact single-line string. This is the ideal path.
+                return (true, JsonSerializer.Serialize(doc.RootElement));
+            }
+        }
+        catch (JsonException)
+        {
+            // If strict JSON parsing fails, it might be a Python dict with single quotes.
+            // We will perform a basic cleanup and let Python's ast.literal_eval try to handle it.
+
+            // We consider this path "valid" for the purpose of attempting execution.
+            // Python will be the final judge.
+
+            // Collapse all whitespace and newlines into single spaces.
+            string singleLine = Regex.Replace(rawInput, @"\s+", " ").Trim();
+
+            return (true, singleLine);
+        }
+    }
+
+    [RelayCommand]
+    private void ClearOutput()
+    {
+        OutputResult = "";
+        _executionCount = 0; // Reset the counter as well
+        Log.Information("Output has been cleared.");
+    }
 }

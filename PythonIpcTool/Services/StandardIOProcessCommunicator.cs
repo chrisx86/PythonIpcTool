@@ -122,6 +122,14 @@ public class StandardIOProcessCommunicator : IPythonProcessCommunicator
             Log.Error(ex, "Failed to write to Python process standard input.");
             throw new PythonProcessException($"Failed to start or connect socket process: {ex.Message}", ex);
         }
+        finally
+        {
+            // --- CRUCIAL MODIFICATION ---
+            // Close the standard input stream after writing.
+            // This sends the End-of-File (EOF) signal to the Python script,
+            // which allows sys.stdin.read() to complete.
+            _pythonProcess.StandardInput.Close();
+        }
     }
 
     /// <summary>
