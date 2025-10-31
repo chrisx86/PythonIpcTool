@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization; // For JSON serialization attributes
+﻿using System.Text.Json.Serialization;
 
 namespace PythonIpcTool.Models;
 
@@ -38,5 +38,4 @@ public class PythonOutputResult
     [JsonIgnore] // This property will not be serialized/deserialized to/from JSON
     public bool IsSuccess => string.Equals(Status, "success", StringComparison.OrdinalIgnoreCase) && string.IsNullOrEmpty(Error);
 
-    // You can add more properties here as per your Python script's output requirements.
 }

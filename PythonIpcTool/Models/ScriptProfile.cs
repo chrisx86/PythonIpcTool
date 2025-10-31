@@ -1,7 +1,7 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using PythonIpcTool.Models;
 
-public partial class ScriptProfile : ObservableObject // 繼承 ObservableObject 以便在 UI 中即時更新
+public partial class ScriptProfile : ObservableObject
 {
     public Guid Id { get; set; } = Guid.NewGuid();
 

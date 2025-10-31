@@ -49,7 +49,6 @@ public class LocalSocketProcessCommunicator : IPythonProcessCommunicator
             StandardErrorEncoding = Encoding.UTF8
         };
 
-        //創建 Python 進程物件
         _pythonProcess = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
         _pythonProcess.Exited += (sender, e) => ProcessExited?.Invoke(_pythonProcess.ExitCode);
 
@@ -84,7 +83,6 @@ public class LocalSocketProcessCommunicator : IPythonProcessCommunicator
         }
     }
 
-    // MODIFICATION: New private event handler
     private void OnProcessExitedHandler(object? sender, EventArgs e)
     {
         int exitCode = -1;
@@ -152,11 +150,6 @@ public class LocalSocketProcessCommunicator : IPythonProcessCommunicator
             {
                 Log.Debug("Forcefully terminating Python process.");
                 _pythonProcess.Kill(true); // Kill the entire process tree
-                //if (!_pythonProcess.WaitForExit(1000))
-                //{
-                //    Log.Warning("Process did not exit gracefully, killing it.");
-                //    _pythonProcess.Kill();
-                //}
             }
             catch (InvalidOperationException)
             {
@@ -172,31 +165,6 @@ public class LocalSocketProcessCommunicator : IPythonProcessCommunicator
         _pythonProcess = null;
         _internalReadCts?.Dispose();
         _internalReadCts = null;
-    }
-
-    private async Task ReadStreamAsync(Stream stream, Action<string>? onLineReceived, CancellationToken cancellationToken)
-    {
-        using var reader = new StreamReader(stream, Encoding.UTF8, leaveOpen: true);
-        try
-        {
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                string? line = await reader.ReadLineAsync(cancellationToken);
-                if (line == null) break;
-
-                onLineReceived?.Invoke(line);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            Log.Warning("SendMessageAsync was canceled.");
-            throw;
-        }
-        catch (IOException) { /* Socket was closed, expected */ }
-        catch (Exception ex)
-        {
-            Log.Error($"Error reading from stream: {ex.Message}");
-        }
     }
 
     private async Task ReadStreamAsync(StreamReader reader, Action<string>? onLineReceived, CancellationToken cancellationToken)
@@ -227,13 +195,3 @@ public class LocalSocketProcessCommunicator : IPythonProcessCommunicator
         }
     }
 }
-
-
-/*
-C# 作為伺服器： TcpListener 啟動一個伺服器，並在一個隨機的可用端口 (port 0) 上監聽。
-傳遞端口號： Arguments 現在變為 $"\"{scriptPath}\" socket {port}"，將腳本路徑、socket 關鍵字和伺服器端口號傳遞給 Python 腳本。
-等待連接： _listener.AcceptTcpClientAsync() 會異步地等待 Python 客戶端的連接。我們還加入了一個超時機制，防止應用程式因 Python 腳本未能連接而永久掛起。
-捕獲 stderr： 即使我們的主要通訊是透過 Socket，RedirectStandardError = true 仍然非常重要。它可以捕獲 Python 腳本在啟動階段的錯誤（例如 import 失敗、語法錯誤或無法連接 Socket），這些錯誤發生在 Socket 通訊建立之前。
-SendMessageAsync： 將 JSON 字串和一個換行符 \n 一起編碼為 UTF-8 位元組，並寫入 NetworkStream。
-StopProcess： 清理順序很重要。首先關閉網絡資源 (_stream, _client, _listener)，這會讓 Python 腳本的 readline() 返回空，使其能夠優雅退出循環。然後再處理 Process 物件。 
-*/

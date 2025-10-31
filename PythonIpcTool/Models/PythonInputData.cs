@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization; // For JSON serialization attributes
+﻿using System.Text.Json.Serialization;
 
 namespace PythonIpcTool.Models;
 
@@ -28,8 +28,4 @@ public class PythonInputData
     [JsonPropertyName("customPayload")] // Maps to "customPayload" key in JSON
     public object? CustomPayload { get; set; }
 
-    // You can add more properties here as per your Python script's input requirements.
-    // For example:
-    // [JsonPropertyName("command")]
-    // public string? Command { get; set; }
 }

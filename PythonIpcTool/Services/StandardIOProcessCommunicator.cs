@@ -3,7 +3,7 @@ using System.Text;
 using System.Diagnostics;
 using PythonIpcTool.Models;
 using PythonIpcTool.Exceptions;
-using Serilog; // Ensure this namespace is correct for IpcMode
+using Serilog;
 
 namespace PythonIpcTool.Services;
 
@@ -12,7 +12,7 @@ namespace PythonIpcTool.Services;
 /// </summary>
 public class StandardIOProcessCommunicator : IPythonProcessCommunicator
 {
-    private Process? _pythonProcess; // The Python process instance
+    private Process? _pythonProcess;
     private CancellationTokenSource? _internalReadCts;
 
     // Events to notify listeners of received output, errors, or process exit
@@ -151,12 +151,7 @@ public class StandardIOProcessCommunicator : IPythonProcessCommunicator
             try
             {
                 Log.Debug("Forcefully terminating Python process.");
-                _pythonProcess.Kill(true); // Kill the entire process tree
-                //if (!_pythonProcess.WaitForExit(1000))
-                //{
-                //    Log.Warning("Process did not exit gracefully, killing it.");
-                //    _pythonProcess.Kill(true); // Kill the entire process tree
-                //}
+                _pythonProcess.Kill(true);
             }
             catch (Exception ex)
             {
@@ -209,25 +204,3 @@ public class StandardIOProcessCommunicator : IPythonProcessCommunicator
         }
     }
 }
-
-
-/*
-    程式碼解釋：
-    _pythonProcess： Process 類別的實例，用於控制外部 Python 進程。
-    OutputReceived, ErrorReceived, ProcessExited 事件： 這些事件允許 MainViewModel (或其他監聽者) 訂閱來自 Python 進程的輸出、錯誤和退出通知。
-    StartProcessAsync：
-    設置 ProcessStartInfo：關鍵是 UseShellExecute = false (必須重定向 I/O) 和 RedirectStandardInput/Output/Error = true。
-    CreateNoWindow = true：防止 Python 腳本彈出黑窗。
-    EnableRaisingEvents = true：允許訂閱 Exited 事件。
-    啟動進程後，ReadStreamAsync 會異步地持續讀取 StandardOutput 和 StandardError，不會阻塞 UI。
-    await Task.Delay(100)：一個小的延遲，讓 Python 進程有時間啟動和初始化，尤其是在低配置機器或複雜腳本啟動時。
-    SendMessageAsync：
-    將訊息寫入 _pythonProcess.StandardInput。WriteLineAsync 後跟 FlushAsync 至關重要，確保數據立即發送。
-    StopProcess：
-    嘗試先關閉 StandardInput，讓 Python 腳本有機會優雅退出。
-    使用 WaitForExit 等待一段時間，如果 Python 未退出，則使用 Kill() 強制終止。
-    取消 CancellationTokenSource 以停止 ReadStreamAsync 任務，並釋放所有資源。
-    ReadStreamAsync：
-    一個通用的異步方法，用於從 StreamReader 讀取每一行。
-    使用 CancellationToken 實現可取消的讀取操作，這對於應用程式關閉或用戶取消操作時停止讀取非常重要。
-*/

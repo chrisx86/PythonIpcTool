@@ -1,8 +1,8 @@
 ﻿using System.IO;
 using System.Text;
 using System.Text.Json;
-using System.Windows; // Required for DependencyObject
-using System.Collections; // Ensure this is present for AsyncRelayCommand
+using System.Windows;
+using System.Collections;
 using System.ComponentModel;
 using System.Collections.ObjectModel;
 using ControlzEx.Theming;
@@ -15,8 +15,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Serilog;
 using Serilog.Events;
 using MahApps.Metro.Controls.Dialogs;
-using System.Text.RegularExpressions; // For more advanced cleanup if needed
-
+using System.Text.RegularExpressions;
 
 namespace PythonIpcTool.ViewModels;
 
@@ -42,14 +41,14 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<ScriptProfile> ScriptProfiles { get; } = new();
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))] // 當切換 Profile 時重新檢查按鈕狀態
+    [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))]
     [NotifyCanExecuteChangedFor(nameof(RemoveSelectedProfileCommand))]
     private ScriptProfile? _selectedScriptProfile;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))]
     [NotifyCanExecuteChangedFor(nameof(SaveOrUpdateProfileCommand))]
-    [NotifyCanExecuteChangedFor(nameof(InstallDependenciesCommand))] // And this one
+    [NotifyCanExecuteChangedFor(nameof(InstallDependenciesCommand))]
     private string _pythonInterpreterPath = "python.exe";
 
     [ObservableProperty]
@@ -59,7 +58,6 @@ public partial class MainViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(InstallDependenciesCommand))]
     private string _pythonScriptPath = "";
 
-    // Property for user input data
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))]
     private string _inputData = "{\"value\": \"Hello from C#\", \"numbers\": [1, 2, 3]}";
@@ -67,14 +65,11 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private IpcMode _selectedIpcMode = IpcMode.StandardIO;
 
-    // Property for displaying Python script's output
     [ObservableProperty]
     private string _outputResult = "";
 
-    // Property for displaying application status and logs
     public ObservableCollection<string> Logs { get; } = new ObservableCollection<string>();
 
-    // Property to indicate if a process is currently running (for UI busy state)
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ExecutePythonScriptCommand))]
     [NotifyCanExecuteChangedFor(nameof(CancelExecutionCommand))]
@@ -122,13 +117,12 @@ public partial class MainViewModel : ObservableObject
         ScriptProfiles = new ObservableCollection<ScriptProfile>();
         _envService = envService;
 
-        _envService.OutputReceived += (log) => Log.Information(log); // Pipe output to our logger
+        _envService.OutputReceived += (log) => Log.Information(log);
 
         App.LogEvents.CollectionChanged += OnLogEvent;
         LoadInitialSettings();
         _isInitialized = true;
 
-        // --- NEW: Subscribe to property changes within the selected profile ---
         // This allows us to save automatically when the user edits the current profile's details.
         PropertyChanged += (s, e) =>
         {
@@ -285,7 +279,6 @@ public partial class MainViewModel : ObservableObject
         return true;
     }
 
-    // --- NEW: Implement IDisposable to clean up the subscription ---
     /// <summary>
     /// Cleans up resources, particularly the log event subscription.
     /// </summary>
@@ -750,8 +743,6 @@ public partial class MainViewModel : ObservableObject
         Log.Information("[INFO] Input data cleared.");
     }
 
-    // --- Event Handlers from IPC Communicator ---
-
     private void OnOutputReceived(string output)
     {
         App.Current.Dispatcher.Invoke(() =>
@@ -773,7 +764,6 @@ public partial class MainViewModel : ObservableObject
         }
         catch (JsonException)
         {
-            // If it's not valid JSON, return the original string
             return jsonString;
         }
     }

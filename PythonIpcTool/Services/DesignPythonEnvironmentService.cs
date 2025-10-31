@@ -1,5 +1,4 @@
-﻿
-namespace PythonIpcTool.Services;
+﻿namespace PythonIpcTool.Services;
 
 /// <summary>
 /// A design-time safe implementation of IPythonEnvironmentService that does nothing.
@@ -15,10 +14,9 @@ public class DesignPythonEnvironmentService : IPythonEnvironmentService
     /// </summary>
     public Task<string?> CreateVenvAsync(string globalPythonPath, string projectDirectory)
     {
-        // Suppress the unused parameter warning
         _ = globalPythonPath;
         _ = projectDirectory;
-        _ = OutputReceived; // Also suppress this if it's not used elsewhere
+        _ = OutputReceived;
 
         // Return a completed task with a null result, indicating no path was created.
         return Task.FromResult<string?>(null);
@@ -29,7 +27,6 @@ public class DesignPythonEnvironmentService : IPythonEnvironmentService
     /// </summary>
     public Task<bool> InstallDependenciesAsync(string venvPythonPath, string requirementsPath)
     {
-        // Suppress unused parameter warnings
         _ = venvPythonPath;
         _ = requirementsPath;
 
